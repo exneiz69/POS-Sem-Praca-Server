@@ -3,6 +3,7 @@
 
 #include "data.h"
 
+#include <pthread.h>
 #include <list>
 #include <string>
 
@@ -26,13 +27,25 @@ public:
     Reply sendNewMessages(const int socketFD);
 
 private:
+    pthread_mutex_t usersFileMutex;
+
+    pthread_mutex_t authorizedUsersFileMutex;
+
+    pthread_mutex_t unreadMessagesListMutex;
+
     std::list<messageData> unreadMessages;
 
-    Server() {}
+    Server();
+
+    ~Server();
 
     bool checkRegisteredUser(const userData &user, const bool comparePassword = false);
 
     bool checkAuthorization(const int socketFD);
+
+    void addNewUser(const userData &newUser);
+
+    void addNewIP(const std::string newIP, const std::string registeredLogin);
 
     void deleteRegisteredUser(const std::string registeredLogin);
 

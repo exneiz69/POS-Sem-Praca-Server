@@ -11,6 +11,18 @@
 #include <sstream>
 #include <cstring>
 
+Server::Server() {
+    pthread_mutex_init(&this->usersFileMutex, NULL);
+    pthread_mutex_init(&this->authorizedUsersFileMutex, NULL);
+    pthread_mutex_init(&this->unreadMessagesListMutex, NULL);
+}
+
+Server::~Server() {
+    pthread_mutex_destroy(&this->usersFileMutex);
+    pthread_mutex_destroy(&this->authorizedUsersFileMutex);
+    pthread_mutex_destroy(&this->unreadMessagesListMutex);
+}
+
 Reply Server::registerNewUser(const int socketFD) {
     bool isAuthorized;
     isAuthorized = this->checkAuthorization(socketFD);
@@ -34,12 +46,7 @@ Reply Server::registerNewUser(const int socketFD) {
         isAlreadyExisting = this->checkRegisteredUser(newUser);
 
         if (!isAlreadyExisting) {
-            std::ofstream outFile("Users.csv", std::ios::app);
-
-            outFile << newUser.login << ',' << newUser.password << std::endl;
-            printf("Login: %s password: %s\n", newUser.login, newUser.password);
-
-            outFile.close();
+           this->addNewUser(newUser);
 
             reply = Reply::Success;
         } else {
@@ -50,6 +57,7 @@ Reply Server::registerNewUser(const int socketFD) {
     }
 
     //*
+    pthread_mutex_lock(&this->usersFileMutex);
     std::ifstream testInFile("Users.csv");
 
     std::string testLine;
@@ -58,6 +66,7 @@ Reply Server::registerNewUser(const int socketFD) {
     }
 
     testInFile.close();
+    pthread_mutex_unlock(&this->usersFileMutex);
     //*
 
     return reply;
@@ -94,6 +103,7 @@ Reply Server::unregisterUser(const int socketFD) {
     }
 
     //*
+    pthread_mutex_lock(&this->usersFileMutex);
     std::ifstream testInFile("Users.csv");
 
     std::string testLine;
@@ -102,6 +112,7 @@ Reply Server::unregisterUser(const int socketFD) {
     }
 
     testInFile.close();
+    pthread_mutex_unlock(&this->usersFileMutex);
     //*
 
     return reply;
@@ -125,19 +136,13 @@ Reply Server::authorizeUser(const int socketFD) {
         if (n < 0) {
             perror("Error reading from socket");
         }
-        printf("Login: %s password: %s\n", user.login, user.password);
+        std::cout << "Login: " << user.login << " password: " << user.password << std::endl;
 
         bool isExisting;
         isExisting = this->checkRegisteredUser(user, true);
 
         if (isExisting) {
-            std::ofstream outFile("AuthorizedUsers.csv", std::ios::app);
-
-            std::string currentIP = this->getIP(socketFD);
-            outFile << currentIP << ',' << user.login << std::endl;
-            printf("IP: %s login: %s\n", currentIP.c_str(), user.login);
-
-            outFile.close();
+            this->addNewIP(this->getIP(socketFD), user.login);
 
             reply = Reply::Success;
         } else {
@@ -148,6 +153,7 @@ Reply Server::authorizeUser(const int socketFD) {
     }
 
     //*
+    pthread_mutex_lock(&this->authorizedUsersFileMutex);
     std::ifstream testInFile("AuthorizedUsers.csv");
 
     std::string testLine;
@@ -156,6 +162,7 @@ Reply Server::authorizeUser(const int socketFD) {
     }
 
     testInFile.close();
+    pthread_mutex_unlock(&this->authorizedUsersFileMutex);
     //*
 
     return reply;
@@ -189,6 +196,7 @@ Reply Server::deauthorizeUser(const int socketFD) {
     }
 
     //*
+    pthread_mutex_lock(&this->authorizedUsersFileMutex);
     std::ifstream testInFile("AuthorizedUsers.csv");
 
     std::string testLine;
@@ -197,6 +205,7 @@ Reply Server::deauthorizeUser(const int socketFD) {
     }
 
     testInFile.close();
+    pthread_mutex_unlock(&this->authorizedUsersFileMutex);
     //*
 
     return reply;
@@ -227,7 +236,7 @@ Reply Server::getMessage(const int socketFD) {
         strncpy(fullMessage.from, currentLogin.c_str(), currentLogin.size());
         strncpy(fullMessage.to, message.to, 24);
         strncpy(fullMessage.text, message.text, 256);
-        printf("From: %s to: %s text: %s\n", fullMessage.from, fullMessage.to, fullMessage.text);
+        std::cout << "From: " << fullMessage.from << " to: " << fullMessage.to << " text: " << fullMessage.text << std::endl;
         this->addNewMessage(fullMessage);
         reply = Reply::Success;
     } else {
@@ -253,22 +262,25 @@ Reply Server::sendNewMessages(const int socketFD) {
         }
 
         int newMessagesNumber = 0;
+        pthread_mutex_lock(&this->unreadMessagesListMutex);
         for (auto it = this->unreadMessages.begin(); it != this->unreadMessages.end(); ++it) {
             if (currentLogin == (*it).to) {
                 newMessagesNumber++;
             }
         }
-        printf("New messages number: %d\n", newMessagesNumber);
+        pthread_mutex_unlock(&this->unreadMessagesListMutex);
 
+        std::cout << "New messages number: " << newMessagesNumber << std::endl;
         n = write(socketFD, &newMessagesNumber, sizeof(int));
         if (n < 0) {
             perror("Error writing to socket");
         }
 
         if (newMessagesNumber != 0) {
+            pthread_mutex_lock(&this->unreadMessagesListMutex);
             for (auto it = this->unreadMessages.begin(); it != this->unreadMessages.end();) {
                 if (currentLogin == (*it).to) {
-                    printf("From: %s to: %s text: %s\n", (*it).from, (*it).to, (*it).text);
+                    std::cout << "From: " << (*it).from << " to: " << (*it).to << " text: " << (*it).text << std::endl;
                     n = write(socketFD, &(*it), sizeof(messageData));
                     if (n < 0) {
                         perror("Error writing to socket");
@@ -278,6 +290,7 @@ Reply Server::sendNewMessages(const int socketFD) {
                     ++it;
                 }
             }
+            pthread_mutex_unlock(&this->unreadMessagesListMutex);
         }
 
         reply = Reply::Success;
@@ -289,6 +302,7 @@ Reply Server::sendNewMessages(const int socketFD) {
 }
 
 bool Server::checkRegisteredUser(const userData &user, const bool comparePassword) {
+    pthread_mutex_lock(&this->usersFileMutex);
     std::ifstream inFile("Users.csv");
 
     std::string line;
@@ -312,12 +326,15 @@ bool Server::checkRegisteredUser(const userData &user, const bool comparePasswor
     }
 
     inFile.close();
+    pthread_mutex_unlock(&this->usersFileMutex);
 
     return isExisting;
 }
 
 bool Server::checkAuthorization(const int socketFD) {
     std::string currentIP = this->getIP(socketFD);
+
+    pthread_mutex_lock(&this->authorizedUsersFileMutex);
     std::ifstream inFile("AuthorizedUsers.csv");
 
     std::string line;
@@ -334,11 +351,35 @@ bool Server::checkAuthorization(const int socketFD) {
     }
 
     inFile.close();
+    pthread_mutex_unlock(&this->authorizedUsersFileMutex);
 
     return isAlreadyAuthorized;
 }
 
+void Server::addNewUser(const userData &newUser) {
+    pthread_mutex_lock(&this->usersFileMutex);
+    std::ofstream outFile("Users.csv", std::ios::app);
+
+    outFile << newUser.login << ',' << newUser.password << std::endl;
+    std::cout << "Login: " << newUser.login << " password: " << newUser.password << std::endl;
+
+    outFile.close();
+    pthread_mutex_unlock(&this->usersFileMutex);
+}
+
+void Server::addNewIP(const std::string newIP, const std::string registeredLogin) {
+    pthread_mutex_lock(&this->authorizedUsersFileMutex);
+    std::ofstream outFile("AuthorizedUsers.csv", std::ios::app);
+
+    outFile << newIP << ',' << registeredLogin << std::endl;
+    std::cout << "IP: " << newIP << " login: " << registeredLogin << std::endl;
+
+    outFile.close();
+    pthread_mutex_unlock(&this->authorizedUsersFileMutex);
+}
+
 void Server::deleteRegisteredUser(const std::string registeredLogin) {
+    pthread_mutex_lock(&this->usersFileMutex);
     std::ifstream inFile("Users.csv");
     std::ofstream outFile("Users.csv.temp");
 
@@ -359,9 +400,11 @@ void Server::deleteRegisteredUser(const std::string registeredLogin) {
 
     remove("Users.csv");
     rename("Users.csv.temp", "Users.csv");
+    pthread_mutex_unlock(&this->usersFileMutex);
 }
 
 void Server::deleteAuthorizedIP(const std::string authorizedIP) {
+    pthread_mutex_lock(&this->authorizedUsersFileMutex);
     std::ifstream inFile("AuthorizedUsers.csv");
     std::ofstream outFile("AuthorizedUsers.csv.temp");
 
@@ -382,6 +425,7 @@ void Server::deleteAuthorizedIP(const std::string authorizedIP) {
 
     remove("AuthorizedUsers.csv");
     rename("AuthorizedUsers.csv.temp", "AuthorizedUsers.csv");
+    pthread_mutex_unlock(&this->authorizedUsersFileMutex);
 }
 
 std::string Server::getIP(const int socketFD) {
@@ -395,6 +439,8 @@ std::string Server::getIP(const int socketFD) {
 
 std::string Server::getLoginByAuthorization(const int socketFD) {
     std::string currentIP = this->getIP(socketFD);
+
+    pthread_mutex_lock(&this->usersFileMutex);
     std::ifstream inFile("AuthorizedUsers.csv");
 
     std::string line;
@@ -412,10 +458,13 @@ std::string Server::getLoginByAuthorization(const int socketFD) {
     }
 
     inFile.close();
+    pthread_mutex_unlock(&this->usersFileMutex);
 
     return currentLogin;
 }
 
 void Server::addNewMessage(const messageData &message) {
+    pthread_mutex_lock(&this->unreadMessagesListMutex);
     this->unreadMessages.push_back(message);
+    pthread_mutex_unlock(&this->unreadMessagesListMutex);
 }

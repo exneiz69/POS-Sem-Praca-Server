@@ -12,7 +12,7 @@
 #include <iostream>
 
 void *threadMain(void *pData) {
-    printf("start socket in thread\n");
+    std::cout << "start socket in thread" << std::endl;
     int *newSocketFD = (int *) pData;
     int n;
 
@@ -55,7 +55,7 @@ void *threadMain(void *pData) {
         perror("Error writing to socket");
     }
 
-    printf("end socket in thread\n");
+    std::cout << "end socket in thread" << std::endl;
 
     close(*newSocketFD);
 
@@ -72,7 +72,7 @@ int main(int argc, char *argv[]) {
     struct sockaddr_in clientAddress;
 
     if (argc < 2) {
-        fprintf(stderr, "usage %s port\n", argv[0]);
+        std::cerr << "usage " << argv[0] << " port" << std::endl;
         return 1;
     }
 
@@ -102,9 +102,10 @@ int main(int argc, char *argv[]) {
     pthread_attr_setdetachstate(&threadAttr, PTHREAD_CREATE_DETACHED);
 
     for (int i = 0; i < 20; i++) {
-        printf("waiting socket %d\n", i);
+        std::cout << "waiting socket " << i << std::endl;
+
         newSocketFD = accept(socketFD, (sockaddr *) &clientAddress, &clientAddressLength);
-        printf("accepted socket %d\n", i);
+        std::cout << "accepted socket " << i << std::endl;
         pthread_create(&thread[i], &threadAttr, &threadMain, new int(newSocketFD));
     }
 
