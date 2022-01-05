@@ -46,6 +46,15 @@ void *threadMain(void *pData) {
         case Action::GetNewMessages:
             reply = Server::getInstance().sendNewMessages(*newSocketFD);
             break;
+        case Action::AddFriend:
+            reply = Server::getInstance().addFriend(*newSocketFD);
+            break;
+        case Action::RemoveFriend:
+            reply = Server::getInstance().removeFriend(*newSocketFD);
+            break;
+        case Action::GetFriendRequests:
+            reply = Server::getInstance().getFriendRequests(*newSocketFD);
+            break;
         default:
             break;
     }

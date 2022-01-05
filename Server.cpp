@@ -15,12 +15,14 @@ Server::Server() {
     pthread_mutex_init(&this->usersFileMutex, NULL);
     pthread_mutex_init(&this->authorizedUsersFileMutex, NULL);
     pthread_mutex_init(&this->unreadMessagesListMutex, NULL);
+    pthread_mutex_init(&this->friendListFileMutex, NULL);
 }
 
 Server::~Server() {
     pthread_mutex_destroy(&this->usersFileMutex);
     pthread_mutex_destroy(&this->authorizedUsersFileMutex);
     pthread_mutex_destroy(&this->unreadMessagesListMutex);
+    pthread_mutex_destroy(&this->friendListFileMutex);
 }
 
 Reply Server::registerNewUser(const int socketFD) {
@@ -46,7 +48,7 @@ Reply Server::registerNewUser(const int socketFD) {
         isAlreadyExisting = this->checkRegisteredUser(newUser);
 
         if (!isAlreadyExisting) {
-           this->addNewUser(newUser);
+            this->addNewUser(newUser);
 
             reply = Reply::Success;
         } else {
@@ -89,7 +91,7 @@ Reply Server::unregisterUser(const int socketFD) {
 
         n = read(socketFD, &reply, sizeof(Reply));
         if (n < 0) {
-            perror("Error writing to socket");
+            perror("Error reading to socket");
         }
 
         if (reply == Reply::Agree) {
@@ -183,7 +185,7 @@ Reply Server::deauthorizeUser(const int socketFD) {
 
         n = read(socketFD, &reply, sizeof(Reply));
         if (n < 0) {
-            perror("Error writing to socket");
+            perror("Error reading to socket");
         }
 
         if (reply == Reply::Agree) {
@@ -232,13 +234,23 @@ Reply Server::getMessage(const int socketFD) {
             perror("Error reading from socket");
         }
 
-        messageData fullMessage;
-        strncpy(fullMessage.from, currentLogin.c_str(), currentLogin.size());
-        strncpy(fullMessage.to, message.to, 24);
-        strncpy(fullMessage.text, message.text, 256);
-        std::cout << "From: " << fullMessage.from << " to: " << fullMessage.to << " text: " << fullMessage.text << std::endl;
-        this->addNewMessage(fullMessage);
-        reply = Reply::Success;
+        userData user;
+        strncpy(user.login, message.to, 24);
+        bool isExisting;
+        isExisting = this->checkRegisteredUser(user);
+
+        if (isExisting) {
+            messageData fullMessage;
+            strncpy(fullMessage.from, currentLogin.c_str(), currentLogin.size());
+            strncpy(fullMessage.to, message.to, 24);
+            strncpy(fullMessage.text, message.text, 256);
+            std::cout << "From: " << fullMessage.from << " to: " << fullMessage.to << " text: " << fullMessage.text
+                      << std::endl;
+            this->addNewMessage(fullMessage);
+            reply = Reply::Success;
+        } else {
+            reply = Reply::Failure;
+        }
     } else {
         reply = Reply::Denied;
     }
@@ -291,6 +303,190 @@ Reply Server::sendNewMessages(const int socketFD) {
                 }
             }
             pthread_mutex_unlock(&this->unreadMessagesListMutex);
+        }
+
+        reply = Reply::Success;
+    } else {
+        reply = Reply::Denied;
+    }
+
+    return reply;
+}
+
+Reply Server::addFriend(const int socketFD) {
+    std::string currentLogin;
+    currentLogin = this->getLoginByAuthorization(socketFD);
+    bool isAuthorized;
+    isAuthorized = !currentLogin.empty();
+    Reply reply;
+    if (isAuthorized) {
+        reply = Reply::Allowed;
+
+        int n;
+        n = write(socketFD, &reply, sizeof(Reply));
+        if (n < 0) {
+            perror("Error writing to socket");
+        }
+
+        userData user;
+        n = read(socketFD, &user, sizeof(userData::login));
+        if (n < 0) {
+            perror("Error reading from socket");
+        }
+        std::cout << "Login: " << user.login << std::endl;
+
+        bool isExisting;
+        isExisting = this->checkRegisteredUser(user);
+        bool isAlreadyInFriendList;
+        isAlreadyInFriendList = this->checkFriend(currentLogin, user.login, true);
+
+        if (isExisting && !isAlreadyInFriendList) {
+            this->addToFriendList(currentLogin, user.login);
+
+            reply = Reply::Success;
+        } else {
+            reply = Reply::Failure;
+        }
+    } else {
+        reply = Reply::Denied;
+    }
+
+    //*
+    pthread_mutex_lock(&this->friendListFileMutex);
+    std::ifstream testInFile("FriendList.csv");
+
+    std::string testLine;
+    while (getline(testInFile, testLine)) {
+        std::cout << "* " << testLine << std::endl;
+    }
+
+    testInFile.close();
+    pthread_mutex_unlock(&this->friendListFileMutex);
+    //*
+
+    return reply;
+}
+
+Reply Server::removeFriend(const int socketFD) {
+    std::string currentLogin;
+    currentLogin = this->getLoginByAuthorization(socketFD);
+    bool isAuthorized;
+    isAuthorized = !currentLogin.empty();
+    Reply reply;
+    if (isAuthorized) {
+        reply = Reply::Allowed;
+
+        int n;
+        n = write(socketFD, &reply, sizeof(Reply));
+        if (n < 0) {
+            perror("Error writing to socket");
+        }
+
+        userData user;
+        n = read(socketFD, &user, sizeof(userData::login));
+        if (n < 0) {
+            perror("Error reading from socket");
+        }
+        std::cout << "Login: " << user.login << std::endl;
+
+        bool isExisting;
+        isExisting = this->checkRegisteredUser(user);
+        bool isFriend;
+        isFriend = this->checkFriend(currentLogin, user.login, true, true);
+        bool isInvitedToFriends;
+        isInvitedToFriends = this->checkFriend(currentLogin, user.login);
+
+        if (isExisting && (isFriend || isInvitedToFriends)) {
+            this->deleteFromFriendList(currentLogin, user.login);
+
+            reply = Reply::Success;
+        } else {
+            reply = Reply::Failure;
+        }
+    } else {
+        reply = Reply::Denied;
+    }
+
+    //*
+    pthread_mutex_lock(&this->friendListFileMutex);
+    std::ifstream testInFile("FriendList.csv");
+
+    std::string testLine;
+    while (getline(testInFile, testLine)) {
+        std::cout << "* " << testLine << std::endl;
+    }
+
+    testInFile.close();
+    pthread_mutex_unlock(&this->friendListFileMutex);
+    //*
+
+    return reply;
+}
+
+Reply Server::getFriendRequests(const int socketFD) {
+    std::string currentLogin;
+    currentLogin = this->getLoginByAuthorization(socketFD);
+    bool isAuthorized;
+    isAuthorized = !currentLogin.empty();
+    Reply reply;
+    if (isAuthorized) {
+        reply = Reply::Allowed;
+
+        int n;
+        n = write(socketFD, &reply, sizeof(Reply));
+        if (n < 0) {
+            perror("Error writing to socket");
+        }
+
+        int friendRequestsNumber;
+        friendRequestsNumber = this->getFriendRequestsNumber(currentLogin);
+
+        std::cout << "Friend requests number: " << friendRequestsNumber << std::endl;
+        n = write(socketFD, &friendRequestsNumber, sizeof(int));
+        if (n < 0) {
+            perror("Error writing to socket");
+        }
+
+        if (friendRequestsNumber != 0) {
+            pthread_mutex_lock(&this->friendListFileMutex);
+            std::ifstream inFile("FriendList.csv");
+            std::ofstream outFile("FriendList.csv.temp");
+
+            std::string line;
+            std::string loginFrom, loginTo, isConfirmed;
+            Reply reply;
+            while (getline(inFile, line)) {
+                std::stringstream lineStream(line);
+                std::getline(lineStream, loginFrom, ',');
+                std::getline(lineStream, loginTo, ',');
+                std::getline(lineStream, isConfirmed, ',');
+
+                if (currentLogin == loginTo && isConfirmed == "0") {
+                    userData user;
+                    strncpy(user.login, loginFrom.c_str(), 24);
+                    n = write(socketFD, &user, sizeof(userData::login));
+                    if (n < 0) {
+                        perror("Error writing from socket");
+                    }
+                    std::cout << "Login: " << user.login << std::endl;
+
+                    n = read(socketFD, &reply, sizeof(Reply));
+                    if (n < 0) {
+                        perror("Error reading to socket");
+                    }
+
+                    if (reply == Reply::Agree) {
+                        outFile << loginFrom << ',' << loginTo << ',' << '1' << std::endl;
+                    }
+                }
+            }
+
+            inFile.close();
+            outFile.close();
+
+            remove("FriendList.csv");
+            rename("FriendList.csv.temp", "FriendList.csv");
+            pthread_mutex_unlock(&this->friendListFileMutex);
         }
 
         reply = Reply::Success;
@@ -467,4 +663,97 @@ void Server::addNewMessage(const messageData &message) {
     pthread_mutex_lock(&this->unreadMessagesListMutex);
     this->unreadMessages.push_back(message);
     pthread_mutex_unlock(&this->unreadMessagesListMutex);
+}
+
+bool Server::checkFriend(const std::string currentLogin, const std::string friendLogin, const bool bilateralCheck, const bool checkConfirmation) {
+    pthread_mutex_lock(&this->friendListFileMutex);
+    std::ifstream inFile("FriendList.csv");
+
+    std::string line;
+    std::string loginFrom, loginTo, isConfirmed;
+    bool isExisting = false;
+    while (getline(inFile, line)) {
+        std::stringstream lineStream(line);
+        std::getline(lineStream, loginFrom, ',');
+        std::getline(lineStream, loginTo, ',');
+        std::getline(lineStream, isConfirmed, ',');
+
+        if ((currentLogin == loginFrom && friendLogin == loginTo) ||
+            (bilateralCheck && friendLogin == loginFrom && currentLogin == loginTo)) {
+            if (checkConfirmation) {
+                if (isConfirmed == "1") {
+                    isExisting = true;
+                }
+            } else {
+                isExisting = true;
+            }
+            break;
+        }
+    }
+
+    inFile.close();
+    pthread_mutex_unlock(&this->friendListFileMutex);
+
+    return isExisting;
+}
+
+void Server::addToFriendList(const std::string currentLogin, const std::string friendLogin) {
+    pthread_mutex_lock(&this->friendListFileMutex);
+    std::ofstream outFile("FriendList.csv", std::ios::app);
+
+    outFile << currentLogin << ',' << friendLogin << ',' << '0' << std::endl;
+    std::cout << "Login: " << currentLogin << " friend login: " << friendLogin << std::endl;
+
+    outFile.close();
+    pthread_mutex_unlock(&this->friendListFileMutex);
+}
+
+void Server::deleteFromFriendList(const std::string currentLogin, const std::string friendLogin) {
+    pthread_mutex_lock(&this->friendListFileMutex);
+    std::ifstream inFile("FriendList.csv");
+    std::ofstream outFile("FriendList.csv.temp");
+
+    std::string line;
+    std::string loginFrom, loginTo, isConfirmed;
+    while (getline(inFile, line)) {
+        std::stringstream lineStream(line);
+        std::getline(lineStream, loginFrom, ',');
+        std::getline(lineStream, loginTo, ',');
+        std::getline(lineStream, isConfirmed, ',');
+
+        if (currentLogin != loginFrom || friendLogin != loginTo) {
+            outFile << loginFrom << ',' << loginTo << ',' << isConfirmed << std::endl;
+        }
+    }
+
+    inFile.close();
+    outFile.close();
+
+    remove("FriendList.csv");
+    rename("FriendList.csv.temp", "FriendList.csv");
+    pthread_mutex_unlock(&this->friendListFileMutex);
+}
+
+int Server::getFriendRequestsNumber(const std::string login) {
+    pthread_mutex_lock(&this->friendListFileMutex);
+    std::ifstream inFile("FriendList.csv");
+
+    std::string line;
+    std::string loginFrom, loginTo, isConfirmed;
+    int friendRequestsNumber = 0;
+    while (getline(inFile, line)) {
+        std::stringstream lineStream(line);
+        std::getline(lineStream, loginFrom, ',');
+        std::getline(lineStream, loginTo, ',');
+        std::getline(lineStream, isConfirmed, ',');
+
+        if (login == loginTo && isConfirmed == "0") {
+            friendRequestsNumber++;
+        }
+    }
+
+    inFile.close();
+    pthread_mutex_unlock(&this->friendListFileMutex);
+
+    return friendRequestsNumber;
 }

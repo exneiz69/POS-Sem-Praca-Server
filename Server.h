@@ -26,12 +26,20 @@ public:
 
     Reply sendNewMessages(const int socketFD);
 
+    Reply addFriend(const int socketFD);
+
+    Reply removeFriend(const int socketFD);
+
+    Reply getFriendRequests(const int socketFD);
+
 private:
     pthread_mutex_t usersFileMutex;
 
     pthread_mutex_t authorizedUsersFileMutex;
 
     pthread_mutex_t unreadMessagesListMutex;
+
+    pthread_mutex_t friendListFileMutex;
 
     std::list<messageData> unreadMessages;
 
@@ -56,6 +64,14 @@ private:
     std::string getLoginByAuthorization(const int socketFD);
 
     void addNewMessage(const messageData &message);
+
+    bool checkFriend(const std::string currentLogin, const std::string friendLogin, const bool bilateralCheck = false, const bool checkConfirmation = false);
+
+    void addToFriendList(const std::string currentLogin, const std::string friendLogin);
+
+    void deleteFromFriendList(const std::string currentLogin, const std::string friendLogin);
+
+    int getFriendRequestsNumber(const std::string login);
 
 public:
     Server(Server const &) = delete;
