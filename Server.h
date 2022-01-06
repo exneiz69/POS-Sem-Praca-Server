@@ -78,6 +78,8 @@ private:
 
     int* getHistoryIndexes(const std::string login);
 
+    std::string encryptPassword(std::string password);
+
 
 public:
     Server(Server const &) = delete;

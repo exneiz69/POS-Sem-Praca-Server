@@ -143,7 +143,7 @@ Reply Server::authorizeUser(const int socketFD) {
         if (n < 0) {
             perror("Error reading from socket");
         }
-        std::cout << "Login: " << user.login << " password: " <<std::endl;
+        std::cout << "Login: " << user.login << " password: " << encryptPassword(user.password)  <<std::endl;
 
         bool isExisting;
         isExisting = this->checkRegisteredUser(user, true);
@@ -537,7 +537,7 @@ bool Server::checkRegisteredUser(const userData &user, const bool comparePasswor
 
         if (user.login == login) {
             if (comparePassword) {
-                if (user.password == password) {
+                if (encryptPassword(user.password) == password) {
                     isExisting = true;
                 }
             } else {
@@ -582,8 +582,8 @@ void Server::addNewUser(const userData &newUser) {
     pthread_mutex_lock(&this->usersFileMutex);
     std::ofstream outFile("Users.csv", std::ios::app);
 
-    outFile << newUser.login << ',' << newUser.password << std::endl;
-    std::cout << "Login: " << newUser.login << " password: " << newUser.password << std::endl;
+    outFile << newUser.login << ',' << encryptPassword(newUser.password) << std::endl;
+    std::cout << "Login: " << newUser.login << " password: " << encryptPassword(newUser.password) << std::endl;
 
     outFile.close();
     pthread_mutex_unlock(&this->usersFileMutex);
@@ -936,28 +936,29 @@ int* Server::getHistoryIndexes(const std::string login) {
 //
 //
 // *  Toto je basic encrypt vycucany z prsta
-// *  */
-//std::string Server::encryptPassword(const std::string password){
-//    std::string unencryptedPassword = "Dano";
-//    std::string encryptedPassword;
-//    unencryptedPassword += password;
-//    unencryptedPassword  += "Drevo";
-//    int messageLength = unencryptedPassword.length();
-//    messageLength--;
-//    char temp;
-//
-//    for (int j = 0; j < 80; ++j) {
-//        temp = unencryptedPassword.at(0);
-//        for (int i = 0; i < messageLength-1; ++i) {
-//            unencryptedPassword[i] += unencryptedPassword[i+1];
-//        }
-//        unencryptedPassword[messageLength] = temp;
-//    }
-//    for (int i = messageLength-1; i >= 0; --i) {
-//        encryptedPassword.push_back(unencryptedPassword.at(i));
-//    }
-//    return encryptedPassword;
-//}
+
+std::string Server::encryptPassword(const std::string password){
+    std::string unencryptedPassword = "Dano";
+    std::string encryptedPassword;
+    unencryptedPassword += password;
+    unencryptedPassword  += "Drevo";
+    int messageLength = unencryptedPassword.length();
+    messageLength--;
+    char temp;
+
+    for (int j = 0; j < 80; ++j) {
+        temp = unencryptedPassword.at(0);
+        for (int i = 0; i < messageLength-1; ++i) {
+            unencryptedPassword[i] += unencryptedPassword[i+1];
+        }
+        unencryptedPassword[messageLength] = temp;
+    }
+    for (int i = messageLength-1; i >= 0; --i) {
+        encryptedPassword.push_back(unencryptedPassword.at(i));
+    }
+    return encryptedPassword;
+}
+
 //
 //
 // * Sha-Vycuc encryption NWP.
