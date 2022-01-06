@@ -4,13 +4,17 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-#include <bitset>
+#include <cmath>
 #include <unistd.h>
 #include <cstdio>
 #include <iostream>
 #include <fstream>
 #include <sstream>
 #include <cstring>
+
+// Prime public key values
+long long P = 4745186671; // Horna modularna hranica Diffie-Hellmanovho algoritmu
+int G = 17; // Mocneny zaklad Diffie-Hellmanovho algoritmu
 
 Server::Server() {
     pthread_mutex_init(&this->usersFileMutex, NULL);
@@ -923,6 +927,7 @@ int* Server::getHistoryIndexes(const std::string login) {
     for (int i = 0; i < ret[0]+1; ++i) {
         std::cout<<ret[i]<<" ";
     }
+
     std::cout<<std::endl;
     return ret;
 }
@@ -963,8 +968,46 @@ std::string Server::encryptPassword(const std::string password){
     return encryptedPassword;
 }
 
-//
-//
+Reply Server::sendPublicKey(const int socketFD) {
+    std::string currentLogin;
+    currentLogin = this->getLoginByAuthorization(socketFD);
+    bool isAuthorized;
+    isAuthorized = !currentLogin.empty();
+    Reply reply;
+    if (isAuthorized) {
+        reply = Reply::Allowed;
+        long long PublicP = P;
+        int n;
+        n = read(socketFD, &PublicP, sizeof(long long));
+        if (n < 0) {
+            perror("Error writing to socket");
+        }
+
+        n = write(socketFD, &reply, sizeof(Reply));
+        if (n < 0) {
+            perror("Error reading from socket");
+        }
+        if (reply == Reply::Agree){
+            int PublicG = G;
+            n = read(socketFD, &PublicG, sizeof(int));
+            if (n < 0) {
+                perror("Error writing to socket");
+            }
+
+            n = write(socketFD, &reply, sizeof(Reply));
+            if (n < 0) {
+                perror("Error reading from socket");
+            }
+            if (reply == Reply::Success){
+                return reply;
+            }
+        }
+    } else {
+        return Reply::Denied;
+    }
+    return Reply::Failure;
+}
+
 // * Sha-Vycuc encryption NWP.
 //std::string Server::encryptPassword(const std::string password){
 //    std::string unencryptedPassword = password;

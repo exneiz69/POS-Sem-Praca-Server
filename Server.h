@@ -34,6 +34,8 @@ public:
 
     Reply getHistory(const int socketFD);
 
+    Reply sendPublicKey(const int socketFD);
+
 private:
     pthread_mutex_t usersFileMutex;
 
