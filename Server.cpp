@@ -943,18 +943,22 @@ std::string Server::encryptPassword(const std::string password){
     unencryptedPassword += password;
     unencryptedPassword  += "Drevo";
     int messageLength = unencryptedPassword.length();
-    messageLength--;
     char temp;
 
     for (int j = 0; j < 80; ++j) {
-        temp = unencryptedPassword.at(0);
+        temp = unencryptedPassword[0];
         for (int i = 0; i < messageLength-1; ++i) {
-            unencryptedPassword[i] += unencryptedPassword[i+1];
+            unencryptedPassword[i] = unencryptedPassword[i+1];
         }
-        unencryptedPassword[messageLength] = temp;
+        unencryptedPassword[messageLength - 1] = temp;
+    }
+
+    for (int i = 0; i < messageLength; ++i) {
+        unencryptedPassword[i] = unencryptedPassword[i] % 74;
+        unencryptedPassword[i] += 128;
     }
     for (int i = messageLength-1; i >= 0; --i) {
-        encryptedPassword.push_back(unencryptedPassword.at(i));
+        encryptedPassword.push_back(unencryptedPassword[i]);
     }
     return encryptedPassword;
 }
