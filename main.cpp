@@ -57,6 +57,9 @@ void *threadMain(void *pData) {
                 case Action::GetFriendRequests:
                     reply = Server::getInstance().getFriendRequests(*newSocketFD);
                     break;
+                case Action::GetHistory:
+                    reply = Server::getInstance().getHistory(*newSocketFD);
+                    break;
                 default:
                     break;
             }
