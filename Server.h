@@ -20,7 +20,7 @@ public:
 
     Reply authorizeUser(const int socketFD);
 
-    Reply deauthorizeUser(const int socketFD);
+    Reply deauthorizeUser(const int socketFD); // logout
 
     Reply getMessage(const int socketFD);
 
