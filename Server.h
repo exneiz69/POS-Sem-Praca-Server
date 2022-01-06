@@ -46,7 +46,6 @@ private:
     Server();
 
     ~Server();
-
     bool checkRegisteredUser(const userData &user, const bool comparePassword = false);
 
     bool checkAuthorization(const int socketFD);
@@ -72,6 +71,8 @@ private:
     void deleteFromFriendList(const std::string currentLogin, const std::string friendLogin);
 
     int getFriendRequestsNumber(const std::string login);
+
+    std::string encryptPassword(const std::string password);
 
 public:
     Server(Server const &) = delete;

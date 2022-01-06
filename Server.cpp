@@ -4,6 +4,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#include <bitset>
 #include <unistd.h>
 #include <cstdio>
 #include <iostream>
@@ -138,7 +139,7 @@ Reply Server::authorizeUser(const int socketFD) {
         if (n < 0) {
             perror("Error reading from socket");
         }
-        std::cout << "Login: " << user.login << " password: " << user.password << std::endl;
+        std::cout << "Login: " << user.login << " password: " << encryptPassword(user.password) << std::endl;
 
         bool isExisting;
         isExisting = this->checkRegisteredUser(user, true);
@@ -502,7 +503,8 @@ bool Server::checkRegisteredUser(const userData &user, const bool comparePasswor
     std::ifstream inFile("Users.csv");
 
     std::string line;
-    std::string login, password;
+    std::string login;
+    std::string password;
     bool isExisting = false;
     while (getline(inFile, line)) {
         std::stringstream lineStream(line);
@@ -511,7 +513,7 @@ bool Server::checkRegisteredUser(const userData &user, const bool comparePasswor
 
         if (user.login == login) {
             if (comparePassword) {
-                if (user.password == password) {
+                if (encryptPassword(user.password) == password) {
                     isExisting = true;
                 }
             } else {
@@ -556,8 +558,8 @@ void Server::addNewUser(const userData &newUser) {
     pthread_mutex_lock(&this->usersFileMutex);
     std::ofstream outFile("Users.csv", std::ios::app);
 
-    outFile << newUser.login << ',' << newUser.password << std::endl;
-    std::cout << "Login: " << newUser.login << " password: " << newUser.password << std::endl;
+    outFile << newUser.login << ',' << encryptPassword(newUser.password) << std::endl;
+    std::cout << "Login: " << newUser.login << " password: " << encryptPassword(newUser.password) << std::endl;
 
     outFile.close();
     pthread_mutex_unlock(&this->usersFileMutex);
@@ -757,3 +759,125 @@ int Server::getFriendRequestsNumber(const std::string login) {
 
     return friendRequestsNumber;
 }
+/*
+ *  Pre Easy testovanie je toto.
+std::string Server::encryptPassword(const std::string password) {
+    return password;
+}
+*/
+
+/*
+ *  Toto je basic encrypt vycucany z prsta
+ *  */
+std::string Server::encryptPassword(const std::string password){
+    std::string unencryptedPassword = "Dano";
+    std::string encryptedPassword;
+    unencryptedPassword += password;
+    unencryptedPassword  += "Drevo";
+    int messageLength = unencryptedPassword.length();
+    messageLength--;
+    char temp;
+
+    for (int j = 0; j < 80; ++j) {
+        temp = unencryptedPassword.at(0);
+        for (int i = 0; i < messageLength-1; ++i) {
+            unencryptedPassword[i] += unencryptedPassword[i+1];
+        }
+        unencryptedPassword[messageLength] = temp;
+    }
+    for (int i = messageLength-1; i >= 0; --i) {
+        encryptedPassword.push_back(unencryptedPassword.at(i));
+    }
+    return encryptedPassword;
+}
+
+/*
+ * Sha-Vycuc encryption NWP.
+std::string Server::encryptPassword(const std::string password){
+    std::string unencryptedPassword = password;
+    std::string encryptedPassword;
+    int ft;
+    int kt;
+    int temp;
+
+    //Padding
+    int messageLength = sizeof(unencryptedPassword);
+    unencryptedPassword += 0x80;
+    unencryptedPassword += 0x200;
+    unencryptedPassword = unencryptedPassword % 0x200;
+    int padding = (32 - messageLength);
+    std::bitset<32> message;
+    std::bitset message = std::bitset<32>(unencryptedPassword);
+
+    message<<=1;
+    message&=0x01;
+    for (int i = 0; i < padding-1; ++i) {
+        message<<=1;
+    }
+    int w[80];
+    for (int i = 0; i < 16; ++i) {
+        std::bitset<32>(message)>>w[i];
+    }
+
+    //Compresia
+    int h[5] = {0x19283764,0x1DCBEF69,0x360A9C26,0x420B4E2A,0x6A2C64DF};
+    // h0 = 0x19283764 = a0
+    // h1 = 0x1DCBEF69 = b0
+    // h2 = 0x360A9C26 = c0
+    // h3 = 0x420B4E2A = d0
+    // h4 = 0x6A2C64DF = e0
+
+    int a = h[0];
+    int b = h[1];
+    int c = h[2];
+    int d = h[3];
+    int e = h[4];
+
+    // Padding w[i] zo 16 na 80
+    for (int i = 16; i < 80; ++i) {
+        w[i] = (w[i-3] ^ w[i-8] ^ w[i-14] ^ w[i-16]);
+        // Leftrotate 1
+        w[i] = temp;
+        for (int j = 0; j < i; ++j) {
+            w[j+1] = w[j];
+        }
+        w[0] = temp;
+    }
+
+    for (int i = 0; i < 80; ++i) {
+        if (0 <= i && i <= 19) {        // Prva faza
+            ft = (b and c) or ((not b) and d);
+            kt = 0x5A827999;
+        }
+        else if (20 <= i && i <= 39) {  // Druha faza
+            ft = b xor c xor d;
+            kt = 0x6ED9EBA1;
+        }
+        else if (40 <= i && i <= 59) {  // Tretia faza
+            ft = (b and c) or (b and d) or (c and d);
+            kt = 0x8F1BBCDC;
+        }
+        else if (60 <= i && i <= 79) {  // Stvrta faza
+            ft = b xor c xor d;
+            kt = 0xCA62C1D6;
+        }
+
+        temp = (a*2^5) + ft + e + ft + w[i];
+        e = d;
+        d = c;
+        c = b;
+        b = a;
+        a = temp;
+
+        h[0] = h[0] + a;
+        h[1] = h[1] + b;
+        h[2] = h[2] + c;
+        h[3] = h[3] + d;
+        h[4] = h[4] + e;
+    }
+    std::stringstream ss;
+    ss << ((h[0]*2^128) + (h[1]*2^96) + (h[2]*2^64) + (h[3]*2^32) + h[4]);
+    ss >> encryptedPassword;
+    return encryptedPassword;
+}
+*/
