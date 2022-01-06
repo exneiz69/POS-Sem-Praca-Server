@@ -12,64 +12,65 @@
 #include <iostream>
 
 void *threadMain(void *pData) {
-    std::cout << "start socket in thread" << std::endl;
     int *newSocketFD = (int *) pData;
-    int n;
-
+    std::cout << "start socket " << *newSocketFD << " in thread" << std::endl;
     if (*newSocketFD < 0) {
         perror("ERROR on accept");
     }
 
-    Action action;
-    n = read(*newSocketFD, &action, sizeof(Action));
-    if (n < 0) {
-        perror("Error reading from socket");
+    bool endOfCommunication = false;
+    while (!endOfCommunication) {
+        Action action;
+        int n;
+        n = read(*newSocketFD, &action, sizeof(Action));
+        if (n < 0) {
+            perror("Error reading from socket");
+        } else if (n == 0) {
+            endOfCommunication = true;
+        } else {
+            Reply reply;
+            switch (action) {
+                case Action::RegisterAccount:
+                    reply = Server::getInstance().registerNewUser(*newSocketFD);
+                    break;
+                case Action::DeleteAccount:
+                    reply = Server::getInstance().unregisterUser(*newSocketFD);
+                    break;
+                case Action::Login:
+                    reply = Server::getInstance().authorizeUser(*newSocketFD);
+                    break;
+                case Action::Logout:
+                    reply = Server::getInstance().deauthorizeUser(*newSocketFD);
+                    break;
+                case Action::SendMessage:
+                    reply = Server::getInstance().getMessage(*newSocketFD);
+                    break;
+                case Action::GetNewMessages:
+                    reply = Server::getInstance().sendNewMessages(*newSocketFD);
+                    break;
+                case Action::AddFriend:
+                    reply = Server::getInstance().addFriend(*newSocketFD);
+                    break;
+                case Action::RemoveFriend:
+                    reply = Server::getInstance().removeFriend(*newSocketFD);
+                    break;
+                case Action::GetFriendRequests:
+                    reply = Server::getInstance().getFriendRequests(*newSocketFD);
+                    break;
+                default:
+                    break;
+            }
+
+            n = write(*newSocketFD, &reply, sizeof(Reply));
+            if (n < 0) {
+                perror("Error writing to socket");
+            }
+        }
     }
 
-    Reply reply;
-    switch(action) {
-        case Action::RegisterAccount:
-            reply = Server::getInstance().registerNewUser(*newSocketFD);
-            break;
-        case Action::DeleteAccount:
-            reply = Server::getInstance().unregisterUser(*newSocketFD);
-            break;
-        case Action::Login:
-            reply = Server::getInstance().authorizeUser(*newSocketFD);
-            break;
-        case Action::Logout:
-            reply = Server::getInstance().deauthorizeUser(*newSocketFD);
-            break;
-        case Action::SendMessage:
-            reply = Server::getInstance().getMessage(*newSocketFD);
-            break;
-        case Action::GetNewMessages:
-            reply = Server::getInstance().sendNewMessages(*newSocketFD);
-            break;
-        case Action::AddFriend:
-            reply = Server::getInstance().addFriend(*newSocketFD);
-            break;
-        case Action::RemoveFriend:
-            reply = Server::getInstance().removeFriend(*newSocketFD);
-            break;
-        case Action::GetFriendRequests:
-            reply = Server::getInstance().getFriendRequests(*newSocketFD);
-            break;
-        default:
-            break;
-    }
-
-    n = write(*newSocketFD, &reply, sizeof(Reply));
-    if (n < 0) {
-        perror("Error writing to socket");
-    }
-
-    std::cout << "end socket in thread" << std::endl;
-
+    std::cout << "end socket " << *newSocketFD << " in thread" << std::endl;
     close(*newSocketFD);
-
     delete newSocketFD;
-
     return NULL;
 }
 
