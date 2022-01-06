@@ -32,6 +32,8 @@ public:
 
     Reply getFriendRequests(const int socketFD);
 
+    Reply getHistory(const int socketFD);
+
 private:
     pthread_mutex_t usersFileMutex;
 
@@ -40,6 +42,8 @@ private:
     pthread_mutex_t unreadMessagesListMutex;
 
     pthread_mutex_t friendListFileMutex;
+
+    pthread_mutex_t historyMutex;
 
     std::list<messageData> unreadMessages;
 
@@ -72,7 +76,8 @@ private:
 
     int getFriendRequestsNumber(const std::string login);
 
-    std::string encryptPassword(const std::string password);
+    int* getHistoryIndexes(const std::string login);
+
 
 public:
     Server(Server const &) = delete;
