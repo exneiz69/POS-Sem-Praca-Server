@@ -60,6 +60,12 @@ void *threadMain(void *pData) {
                 case Action::GetHistory:
                     reply = Server::getInstance().getHistory(*newSocketFD);
                     break;
+                case Action::SendFile:
+                    reply = Server::getInstance().sendFile(*newSocketFD);
+                    break;
+                case Action::GetNewFiles:
+                    reply = Server::getInstance().getNewFiles(*newSocketFD);
+                    break;
                 default:
                     break;
             }
