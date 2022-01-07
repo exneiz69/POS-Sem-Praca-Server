@@ -34,6 +34,10 @@ public:
 
     Reply getHistory(const int socketFD);
 
+    Reply sendFile(const int socketFD);
+
+    Reply getNewFiles(const int socketFD);
+
 private:
     pthread_mutex_t usersFileMutex;
 
@@ -45,7 +49,11 @@ private:
 
     pthread_mutex_t historyMutex;
 
+    pthread_mutex_t unreadFilesListMutex;
+
     std::list<messageData> unreadMessages;
+
+    std::list<fileData> unreadFiles;
 
     Server();
 
@@ -67,6 +75,8 @@ private:
     std::string getLoginByAuthorization(const int socketFD);
 
     void addNewMessage(const messageData &message);
+
+    void addNewFile(const fileData &file);
 
     bool checkFriend(const std::string currentLogin, const std::string friendLogin, const bool bilateralCheck = false, const bool checkConfirmation = false);
 

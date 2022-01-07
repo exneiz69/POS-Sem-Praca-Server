@@ -18,6 +18,7 @@ Server::Server() {
     pthread_mutex_init(&this->unreadMessagesListMutex, NULL);
     pthread_mutex_init(&this->friendListFileMutex, NULL);
     pthread_mutex_init(&this->historyMutex, NULL);
+    pthread_mutex_init(&this->unreadFilesListMutex, NULL);
 }
 
 Server::~Server() {
@@ -26,6 +27,7 @@ Server::~Server() {
     pthread_mutex_destroy(&this->unreadMessagesListMutex);
     pthread_mutex_destroy(&this->friendListFileMutex);
     pthread_mutex_destroy(&this->historyMutex);
+    pthread_mutex_destroy(&this->unreadFilesListMutex);
 }
 
 Reply Server::registerNewUser(const int socketFD) {
@@ -962,6 +964,120 @@ std::string Server::encryptPassword(const std::string password){
     }
     return encryptedPassword;
 }
+
+
+Reply Server::sendFile(const int socketFD) {
+    std::cout<<"in send file method"<<std::endl;
+    std::string currentLogin;
+    currentLogin = this->getLoginByAuthorization(socketFD);
+    bool isAuthorized;
+    isAuthorized = !currentLogin.empty();
+    Reply reply;
+    if (isAuthorized) {
+        reply = Reply::Allowed;
+
+        int n;
+        n = write(socketFD, &reply, sizeof(Reply));
+        if (n < 0) {
+            perror("Error writing to socket");
+        }
+
+        fileReducedData file;
+        n = read(socketFD, &file, sizeof(fileReducedData));
+        if (n < 0) {
+            perror("Error reading from socket");
+        }
+
+        userData user;
+        strncpy(user.login, file.to, 24);
+        bool isExisting;
+        isExisting = this->checkRegisteredUser(user);
+
+        if (isExisting) {
+            fileData fd;
+            strncpy(fd.from, currentLogin.c_str(), currentLogin.size());
+            strncpy(fd.to, file.to, sizeof(fileData::to));
+            strncpy(fd.name, file.name, sizeof(fileData::name));
+            strncpy(fd.data, file.data, sizeof(fileData::data));
+            std::cout << "From: " << fd.from << " to: " << fd.to << " file: " << fd.name << std::endl;
+            this->addNewFile(fd);
+            std::cout<<"yes"<<std::endl;
+            reply = Reply::Success;
+        } else {
+            std::cout<<"nooo"<<std::endl;
+            reply = Reply::Failure;
+        }
+    } else {
+        reply = Reply::Denied;
+    }
+
+    return reply;
+}
+
+Reply Server::getNewFiles(const int socketFD) {
+    std::cout<<"in get new file method"<<std::endl;
+    std::string currentLogin;
+    currentLogin = this->getLoginByAuthorization(socketFD);
+    bool isAuthorized;
+    isAuthorized = !currentLogin.empty();
+    Reply reply;
+    if (isAuthorized) {
+        reply = Reply::Allowed;
+
+        int n;
+        n = write(socketFD, &reply, sizeof(Reply));
+        if (n < 0) {
+            perror("Error writing to socket");
+        }
+
+        int newFilesNumber = 0;
+        pthread_mutex_lock(&this->unreadFilesListMutex);
+        for (auto it = this->unreadFiles.begin(); it != this->unreadFiles.end(); ++it) {
+            if (currentLogin == (*it).to) {
+                newFilesNumber++;
+            }
+        }
+        pthread_mutex_unlock(&this->unreadFilesListMutex);
+
+        std::cout << "New messages number: " << newFilesNumber << std::endl;
+        n = write(socketFD, &newFilesNumber, sizeof(int));
+        if (n < 0) {
+            perror("Error writing to socket");
+        }
+
+        if (newFilesNumber != 0) {
+            pthread_mutex_lock(&this->unreadFilesListMutex);
+
+            for (auto it = this->unreadFiles.begin(); it != this->unreadFiles.end();) {
+                if (currentLogin == (*it).to) {
+                    std::cout << "From: " << (*it).from << " to: " << (*it).to << " filename: " << (*it).name << std::endl;
+                    n = write(socketFD, &(*it), sizeof(fileData));
+                    if (n < 0) {
+                        perror("Error writing to socket");
+                    }
+                    it = this->unreadFiles.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+
+            pthread_mutex_unlock(&this->unreadFilesListMutex);
+        }
+
+        reply = Reply::Success;
+    } else {
+        reply = Reply::Denied;
+    }
+
+    return reply;
+}
+
+void Server::addNewFile(const fileData &file) {
+    pthread_mutex_lock(&this->unreadFilesListMutex);
+    this->unreadFiles.push_back(file);
+    pthread_mutex_unlock(&this->unreadFilesListMutex);
+}
+
 
 //
 //
