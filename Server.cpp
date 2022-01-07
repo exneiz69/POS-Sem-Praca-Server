@@ -334,6 +334,7 @@ Reply Server::addFriend(const int socketFD) {
     currentLogin = this->getLoginByAuthorization(socketFD);
     bool isAuthorized;
     isAuthorized = !currentLogin.empty();
+    int privateKey;
     Reply reply;
     if (isAuthorized) {
         reply = Reply::Allowed;
@@ -357,7 +358,7 @@ Reply Server::addFriend(const int socketFD) {
         isAlreadyInFriendList = this->checkFriend(currentLogin, user.login, true);
 
         if (isExisting && !isAlreadyInFriendList) {
-            this->addToFriendList(currentLogin, user.login);
+            this->addToFriendList(currentLogin, user.login, privateKey);
 
             reply = Reply::Success;
         } else {
@@ -737,12 +738,11 @@ bool Server::checkFriend(const std::string currentLogin, const std::string frien
 
     return isExisting;
 }
-
-void Server::addToFriendList(const std::string currentLogin, const std::string friendLogin) {
+void Server::addToFriendList(const std::string currentLogin, const std::string friendLogin, const int privateKey) {
     pthread_mutex_lock(&this->friendListFileMutex);
     std::ofstream outFile("FriendList.csv", std::ios::app);
 
-    outFile << currentLogin << ',' << friendLogin << ',' << '0' << std::endl;
+    outFile << currentLogin << ',' << friendLogin << ',' << privateKey << "," << "0" << std::endl;
     std::cout << "Login: " << currentLogin << " friend login: " << friendLogin << std::endl;
 
     outFile.close();
@@ -968,46 +968,6 @@ std::string Server::encryptPassword(const std::string password){
     return encryptedPassword;
 }
 
-Reply Server::sendPublicKey(const int socketFD) {
-    std::string currentLogin;
-    currentLogin = this->getLoginByAuthorization(socketFD);
-    bool isAuthorized;
-    isAuthorized = !currentLogin.empty();
-    Reply reply;
-    if (isAuthorized) {
-        reply = Reply::Allowed;
-        long long PublicP = P;
-        int n;
-        n = read(socketFD, &PublicP, sizeof(long long));
-        if (n < 0) {
-            perror("Error writing to socket");
-        }
-
-        n = write(socketFD, &reply, sizeof(Reply));
-        if (n < 0) {
-            perror("Error reading from socket");
-        }
-        if (reply == Reply::Agree){
-            int PublicG = G;
-            n = read(socketFD, &PublicG, sizeof(int));
-            if (n < 0) {
-                perror("Error writing to socket");
-            }
-
-            n = write(socketFD, &reply, sizeof(Reply));
-            if (n < 0) {
-                perror("Error reading from socket");
-            }
-            if (reply == Reply::Success){
-                return reply;
-            }
-        }
-    } else {
-        return Reply::Denied;
-    }
-    return Reply::Failure;
-}
-
 // * Sha-Vycuc encryption NWP.
 //std::string Server::encryptPassword(const std::string password){
 //    std::string unencryptedPassword = password;
@@ -1098,3 +1058,44 @@ Reply Server::sendPublicKey(const int socketFD) {
 //}
 //*/
 //>>>>>>> origin/master
+
+
+Reply Server::sendPublicKey(const int socketFD) {
+    std::string currentLogin;
+    currentLogin = this->getLoginByAuthorization(socketFD);
+    bool isAuthorized;
+    isAuthorized = !currentLogin.empty();
+    Reply reply;
+    if (isAuthorized) {
+        reply = Reply::Allowed;
+        long long PublicP = P;
+        int n;
+        n = read(socketFD, &PublicP, sizeof(long long));
+        if (n < 0) {
+            perror("Error writing to socket");
+        }
+
+        n = write(socketFD, &reply, sizeof(Reply));
+        if (n < 0) {
+            perror("Error reading from socket");
+        }
+        if (reply == Reply::Agree){
+            int PublicG = G;
+            n = read(socketFD, &PublicG, sizeof(int));
+            if (n < 0) {
+                perror("Error writing to socket");
+            }
+
+            n = write(socketFD, &reply, sizeof(Reply));
+            if (n < 0) {
+                perror("Error reading from socket");
+            }
+            if (reply == Reply::Success){
+                return reply;
+            }
+        }
+    } else {
+        return Reply::Denied;
+    }
+    return Reply::Failure;
+}
