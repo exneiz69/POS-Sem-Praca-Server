@@ -18,6 +18,7 @@ Server::Server() {
     pthread_mutex_init(&this->unreadMessagesListMutex, NULL);
     pthread_mutex_init(&this->friendListFileMutex, NULL);
     pthread_mutex_init(&this->historyMutex, NULL);
+    pthread_mutex_init(&this->unreadFilesListMutex, NULL);
 }
 
 Server::~Server() {
@@ -26,6 +27,7 @@ Server::~Server() {
     pthread_mutex_destroy(&this->unreadMessagesListMutex);
     pthread_mutex_destroy(&this->friendListFileMutex);
     pthread_mutex_destroy(&this->historyMutex);
+    pthread_mutex_destroy(&this->unreadFilesListMutex);
 }
 
 Reply Server::registerNewUser(const int socketFD) {
@@ -143,7 +145,7 @@ Reply Server::authorizeUser(const int socketFD) {
         if (n < 0) {
             perror("Error reading from socket");
         }
-        std::cout << "Login: " << user.login << " password: " <<std::endl;
+        std::cout << "Login: " << user.login << " password: " << encryptPassword(user.password)  <<std::endl;
 
         bool isExisting;
         isExisting = this->checkRegisteredUser(user, true);
@@ -537,7 +539,7 @@ bool Server::checkRegisteredUser(const userData &user, const bool comparePasswor
 
         if (user.login == login) {
             if (comparePassword) {
-                if (user.password == password) {
+                if (encryptPassword(user.password) == password) {
                     isExisting = true;
                 }
             } else {
@@ -582,8 +584,8 @@ void Server::addNewUser(const userData &newUser) {
     pthread_mutex_lock(&this->usersFileMutex);
     std::ofstream outFile("Users.csv", std::ios::app);
 
-    outFile << newUser.login << ',' << newUser.password << std::endl;
-    std::cout << "Login: " << newUser.login << " password: " << newUser.password << std::endl;
+    outFile << newUser.login << ',' << encryptPassword(newUser.password) << std::endl;
+    std::cout << "Login: " << newUser.login << " password: " << encryptPassword(newUser.password) << std::endl;
 
     outFile.close();
     pthread_mutex_unlock(&this->usersFileMutex);
@@ -936,28 +938,145 @@ int* Server::getHistoryIndexes(const std::string login) {
 //
 //
 // *  Toto je basic encrypt vycucany z prsta
-// *  */
-//std::string Server::encryptPassword(const std::string password){
-//    std::string unencryptedPassword = "Dano";
-//    std::string encryptedPassword;
-//    unencryptedPassword += password;
-//    unencryptedPassword  += "Drevo";
-//    int messageLength = unencryptedPassword.length();
-//    messageLength--;
-//    char temp;
-//
-//    for (int j = 0; j < 80; ++j) {
-//        temp = unencryptedPassword.at(0);
-//        for (int i = 0; i < messageLength-1; ++i) {
-//            unencryptedPassword[i] += unencryptedPassword[i+1];
-//        }
-//        unencryptedPassword[messageLength] = temp;
-//    }
-//    for (int i = messageLength-1; i >= 0; --i) {
-//        encryptedPassword.push_back(unencryptedPassword.at(i));
-//    }
-//    return encryptedPassword;
-//}
+
+std::string Server::encryptPassword(const std::string password){
+    std::string unencryptedPassword = "Dano";
+    std::string encryptedPassword;
+    unencryptedPassword += password;
+    unencryptedPassword  += "Drevo";
+    int messageLength = unencryptedPassword.length();
+    char temp;
+
+    for (int j = 0; j < 80; ++j) {
+        temp = unencryptedPassword[0];
+        for (int i = 0; i < messageLength-1; ++i) {
+            unencryptedPassword[i] = unencryptedPassword[i+1];
+        }
+        unencryptedPassword[messageLength - 1] = temp;
+    }
+
+    for (int i = 0; i < messageLength; ++i) {
+        unencryptedPassword[i] = unencryptedPassword[i] % 74;
+        unencryptedPassword[i] += 128;
+    }
+    for (int i = messageLength-1; i >= 0; --i) {
+        encryptedPassword.push_back(unencryptedPassword[i]);
+    }
+    return encryptedPassword;
+}
+
+Reply Server::sendFile(const int socketFD) {
+    std::cout<<"in send file method"<<std::endl;
+    std::string currentLogin;
+    currentLogin = this->getLoginByAuthorization(socketFD);
+    bool isAuthorized;
+    isAuthorized = !currentLogin.empty();
+    Reply reply;
+    if (isAuthorized) {
+        reply = Reply::Allowed;
+
+        int n;
+        n = write(socketFD, &reply, sizeof(Reply));
+        if (n < 0) {
+            perror("Error writing to socket");
+        }
+
+        fileReducedData file;
+        n = read(socketFD, &file, sizeof(fileReducedData));
+        if (n < 0) {
+            perror("Error reading from socket");
+        }
+
+        userData user;
+        strncpy(user.login, file.to, 24);
+        bool isExisting;
+        isExisting = this->checkRegisteredUser(user);
+
+        if (isExisting) {
+            fileData fd;
+            strncpy(fd.from, currentLogin.c_str(), currentLogin.size());
+            strncpy(fd.to, file.to, sizeof(fileData::to));
+            strncpy(fd.name, file.name, sizeof(fileData::name));
+            strncpy(fd.data, file.data, sizeof(fileData::data));
+            std::cout << "From: " << fd.from << " to: " << fd.to << " file: " << fd.name << std::endl;
+            this->addNewFile(fd);
+            std::cout<<"yes"<<std::endl;
+            reply = Reply::Success;
+        } else {
+            std::cout<<"nooo"<<std::endl;
+            reply = Reply::Failure;
+        }
+    } else {
+        reply = Reply::Denied;
+    }
+
+    return reply;
+}
+
+Reply Server::getNewFiles(const int socketFD) {
+    std::cout<<"in get new file method"<<std::endl;
+    std::string currentLogin;
+    currentLogin = this->getLoginByAuthorization(socketFD);
+    bool isAuthorized;
+    isAuthorized = !currentLogin.empty();
+    Reply reply;
+    if (isAuthorized) {
+        reply = Reply::Allowed;
+
+        int n;
+        n = write(socketFD, &reply, sizeof(Reply));
+        if (n < 0) {
+            perror("Error writing to socket");
+        }
+
+        int newFilesNumber = 0;
+        pthread_mutex_lock(&this->unreadFilesListMutex);
+        for (auto it = this->unreadFiles.begin(); it != this->unreadFiles.end(); ++it) {
+            if (currentLogin == (*it).to) {
+                newFilesNumber++;
+            }
+        }
+        pthread_mutex_unlock(&this->unreadFilesListMutex);
+
+        std::cout << "New messages number: " << newFilesNumber << std::endl;
+        n = write(socketFD, &newFilesNumber, sizeof(int));
+        if (n < 0) {
+            perror("Error writing to socket");
+        }
+
+        if (newFilesNumber != 0) {
+            pthread_mutex_lock(&this->unreadFilesListMutex);
+
+            for (auto it = this->unreadFiles.begin(); it != this->unreadFiles.end();) {
+                if (currentLogin == (*it).to) {
+                    std::cout << "From: " << (*it).from << " to: " << (*it).to << " filename: " << (*it).name << std::endl;
+                    n = write(socketFD, &(*it), sizeof(fileData));
+                    if (n < 0) {
+                        perror("Error writing to socket");
+                    }
+                    it = this->unreadFiles.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+
+            pthread_mutex_unlock(&this->unreadFilesListMutex);
+        }
+
+        reply = Reply::Success;
+    } else {
+        reply = Reply::Denied;
+    }
+
+    return reply;
+}
+
+void Server::addNewFile(const fileData &file) {
+    pthread_mutex_lock(&this->unreadFilesListMutex);
+    this->unreadFiles.push_back(file);
+    pthread_mutex_unlock(&this->unreadFilesListMutex);
+}
+
 //
 //
 // * Sha-Vycuc encryption NWP.
