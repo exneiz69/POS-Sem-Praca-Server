@@ -37,6 +37,9 @@ public:
     Reply sendFile(const int socketFD);
 
     Reply getNewFiles(const int socketFD);
+  
+    Reply sendPublicKey(const int socketFD);
+  
 
 private:
     pthread_mutex_t usersFileMutex;
