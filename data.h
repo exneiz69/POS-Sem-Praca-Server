@@ -6,7 +6,7 @@ enum class Reply {
 };
 
 enum class Action {
-    RegisterAccount = 0x0400, DeleteAccount, Login, Logout, SendMessage, GetNewMessages, AddFriend, RemoveFriend, GetFriendRequests, GetHistory, sendPublicKey
+    RegisterAccount = 0x0400, DeleteAccount, Login, Logout, SendMessage, GetNewMessages, AddFriend, RemoveFriend, GetFriendRequests, GetHistory, SendFile, GetNewFiles, sendPublicKey
 };
 
 struct userData {
@@ -23,6 +23,21 @@ struct messageData {
 struct messageReducedData {
     char to[24] = {0};
     char text[256] = {0};
+};
+
+struct fileData
+{
+    char from[24] = {0};
+    char to[24] = {0};
+    char name[128] = {0}; // with suffix
+    char data[2048] = {0};
+};
+
+struct fileReducedData
+{
+    char to[24] = {0};
+    char name[128] = {0}; // with suffix
+    char data[2048] = {0};
 };
 
 #endif
