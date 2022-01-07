@@ -965,6 +965,7 @@ std::string Server::encryptPassword(const std::string password){
     return encryptedPassword;
 }
 
+
 Reply Server::sendFile(const int socketFD) {
     std::cout<<"in send file method"<<std::endl;
     std::string currentLogin;
@@ -1076,6 +1077,7 @@ void Server::addNewFile(const fileData &file) {
     this->unreadFiles.push_back(file);
     pthread_mutex_unlock(&this->unreadFilesListMutex);
 }
+
 
 //
 //
