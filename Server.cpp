@@ -1318,14 +1318,18 @@ long long Server::primeNumberGenerator() {
     return primeNum;
 }
 
-//TODO Vytvoriy metodu na encrypt message, pomocov private key postavaneho z public variables, posielat len pre frienda.
-std::string encryptMessage(std::string UnencryptedMessage) {
+std::string Server::encryptMessage(const int socketFD, std::string UnencryptedMessage) {
     std::string encryptedMessage = UnencryptedMessage;
+    for (int i = 0; i < sizeof(UnencryptedMessage); ++i) {
+        encryptedMessage[i] += this->privateKeyMap(getLoginByAuthorization(socketFD));
+    }
     return encryptedMessage;
 }
 
-//TODO Vytvoriy metodu na deencrypt message, pomocov private key postavaneho z public variables, posielat len pre frienda.
-std::string decryptMessage(std::string EncryptedMessage) {
+std::string Server::decryptMessage(const int socketFD, std::string EncryptedMessage) {
     std::string unencryptedMessage = EncryptedMessage;
+    for (int i = 0; i < sizeof(EncryptedMessage); ++i) {
+        unencryptedMessage[i] -= this->privateKeyMap(getLoginByAuthorization(socketFD));
+    }
     return unencryptedMessage;
 }

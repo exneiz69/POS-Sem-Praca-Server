@@ -26,6 +26,10 @@ struct messageReducedData {
     char text[256] = {0};
 };
 
+struct encryptedData {
+    char text[280] = {0};
+};
+
 struct fileData
 {
     char from[24] = {0};

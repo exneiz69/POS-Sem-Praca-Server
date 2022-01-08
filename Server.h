@@ -103,11 +103,9 @@ private:
 
     std::string encryptPassword(std::string password);
 
-    //TODO samotna metoda ktora bude encryptovat messages.
-    std::string encryptMessage(std::string UnencryptedMessage);
+    std::string encryptMessage(const int socketFD, std::string UnencryptedMessage);
 
-    //TODO samotna metoda ktora bude decryptovat messages.
-    std::string decryptMessage(std::string EncryptedMessage);
+    std::string decryptMessage(const int socketFD, std::string EncryptedMessage);
 
 
     long long diffieHelmanStepOne(long long Prime);
