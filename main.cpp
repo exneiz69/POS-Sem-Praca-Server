@@ -66,6 +66,12 @@ void *threadMain(void *pData) {
                 case Action::GetNewFiles:
                     reply = Server::getInstance().getNewFiles(*newSocketFD);
                     break;
+                case Action::CreateGroup:
+                    reply = Server::getInstance().createGroup(*newSocketFD);
+                    break;
+                case Action::AddUserToGroup:
+                    reply = Server::getInstance().addUserToGroup(*newSocketFD);
+                    break;
                 default:
                     break;
             }
