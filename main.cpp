@@ -69,11 +69,8 @@ void *threadMain(void *pData) {
                 case Action::SendPublicKey:
                     reply = Server::getInstance().sendPublicKey(*newSocketFD);
                     break;
-                case Action::GetPrivateKeyComponent:
-                    reply = Server::getInstance().getPrivatekeyComponent(*newSocketFD);
-                    break;
-                case Action::SendPrivateKeyComponent:
-                    reply = Server::getInstance().sendPrivateKeyComponent(*newSocketFD);
+                case Action::BuildSymmetricConnection:
+                    reply = Server::getInstance().buildSymmetricConnection(*newSocketFD);
                     break;
                 default:
                     break;

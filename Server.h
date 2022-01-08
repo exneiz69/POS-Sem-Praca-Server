@@ -6,6 +6,7 @@
 #include <pthread.h>
 #include <list>
 #include <string>
+#include <map>
 
 class Server {
 public:
@@ -40,9 +41,7 @@ public:
   
     Reply sendPublicKey(const int socketFD);
 
-    Reply getPrivatekeyComponent(const int socketFD);
-
-    Reply sendPrivateKeyComponent(const int socketFD);
+    Reply buildSymmetricConnection(const int socketFD);
   
 
 private:
@@ -58,11 +57,18 @@ private:
 
     pthread_mutex_t unreadFilesListMutex;
     //TODO mutex na vytvaranie a parovanie encryption klucov pridat do shenanigans
-    pthread_mutex_t encryptionKeyMutex;
+    pthread_mutex_t encryptionBuildingMutex;
 
     std::list<messageData> unreadMessages;
 
     std::list<fileData> unreadFiles;
+
+    std::map<std::string,long long> privateKeyMap;
+
+// Prime public key values
+    long long P = 4745186671;
+    long long G = 17;
+
 
     Server();
 
@@ -106,9 +112,15 @@ private:
     std::string decryptMessage(std::string EncryptedMessage);
 
 
-    int diffieHelmanStepOne();
+    long long diffieHelmanStepOne(long long Prime);
+
+    long long diffieHelmanStepTwo(long long privateKeyComponentClient, long long privateKeyComponentServer);
+
 
 public:
+
+    long long getG();
+    long long getP();
     Server(Server const &) = delete;
 
     void operator=(Server const &) = delete;

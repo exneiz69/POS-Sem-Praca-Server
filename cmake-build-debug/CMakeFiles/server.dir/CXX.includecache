@@ -1,0 +1,44 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/tmp/tmp.lPuRSoB3AE/Server.cpp
+Server.h
+/tmp/tmp.lPuRSoB3AE/Server.h
+sys/socket.h
+-
+netinet/in.h
+-
+arpa/inet.h
+-
+cmath
+-
+unistd.h
+-
+cstdio
+-
+iostream
+-
+fstream
+-
+sstream
+-
+cstring
+-
+
+/tmp/tmp.lPuRSoB3AE/Server.h
+data.h
+/tmp/tmp.lPuRSoB3AE/data.h
+pthread.h
+-
+list
+-
+string
+-
+
+/tmp/tmp.lPuRSoB3AE/data.h
+

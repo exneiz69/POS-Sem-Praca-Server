@@ -12,9 +12,6 @@
 #include <sstream>
 #include <cstring>
 
-// Prime public key values
-long long P = 4745186671; // Horna modularna hranica Diffie-Hellmanovho algoritmu
-int G = 17; // Mocneny zaklad Diffie-Hellmanovho algoritmu
 
 Server::Server() {
     pthread_mutex_init(&this->usersFileMutex, NULL);
@@ -23,7 +20,7 @@ Server::Server() {
     pthread_mutex_init(&this->friendListFileMutex, NULL);
     pthread_mutex_init(&this->historyMutex, NULL);
     pthread_mutex_init(&this->unreadFilesListMutex, NULL);
-    pthread_mutex_init(&this->encryptionKeyMutex, NULL);
+    pthread_mutex_init(&this->encryptionBuildingMutex, NULL);
 }
 
 Server::~Server() {
@@ -33,7 +30,7 @@ Server::~Server() {
     pthread_mutex_destroy(&this->friendListFileMutex);
     pthread_mutex_destroy(&this->historyMutex);
     pthread_mutex_destroy(&this->unreadFilesListMutex);
-    pthread_mutex_destroy(&this->encryptionKeyMutex);
+    pthread_mutex_destroy(&this->encryptionBuildingMutex);
 }
 
 Reply Server::registerNewUser(const int socketFD) {
@@ -158,9 +155,6 @@ Reply Server::authorizeUser(const int socketFD) {
 
         if (isExisting) {
             this->addNewIP(this->getIP(socketFD), user.login);
-
-            //TODO pridat tvorbu encryption kluca
-
             reply = Reply::Success;
         } else {
             reply = Reply::Failure;
@@ -205,6 +199,7 @@ Reply Server::deauthorizeUser(const int socketFD) {
 
         if (reply == Reply::Agree) {
             this->deleteAuthorizedIP(this->getIP(socketFD));
+            this->privateKeyMap.erase(getLoginByAuthorization(socketFD));
         }
 
         reply = Reply::Success;
@@ -323,15 +318,12 @@ Reply Server::sendNewMessages(const int socketFD) {
                     ++it;
                 }
             }
-
             pthread_mutex_unlock(&this->unreadMessagesListMutex);
         }
-
         reply = Reply::Success;
     } else {
         reply = Reply::Denied;
     }
-
     return reply;
 }
 
@@ -872,6 +864,8 @@ Reply Server::getHistory(const int socketFD) {
                 lineNumber++;
             }
             inFile.close();
+            delete[] historyIndexes;
+            historyIndexes = nullptr;
             pthread_mutex_unlock(&this->historyMutex);
         }
         reply = Reply::Success;
@@ -1018,7 +1012,6 @@ Reply Server::sendFile(const int socketFD) {
     } else {
         reply = Reply::Denied;
     }
-
     return reply;
 }
 
@@ -1185,55 +1178,142 @@ Reply Server::sendPublicKey(const int socketFD) {
     bool isAuthorized;
     isAuthorized = !currentLogin.empty();
     Reply reply;
+    int n;
     if (isAuthorized) {
         reply = Reply::Allowed;
-        long long PublicP = P;
-        int n;
-        n = read(socketFD, &PublicP, sizeof(long long));
-        if (n < 0) {
-            perror("Error writing to socket");
-        }
-
         n = write(socketFD, &reply, sizeof(Reply));
         if (n < 0) {
             perror("Error reading from socket");
         }
+        long long PublicP = this->getP();
+        n = write(socketFD, &PublicP, sizeof(long long));
+        if (n < 0) {
+            perror("Error writing to socket");
+        }
+
+        n = read(socketFD, &reply, sizeof(Reply));
+        if (n < 0) {
+            perror("Error reading from socket");
+        }
         if (reply == Reply::Agree){
-            int PublicG = G;
-            n = read(socketFD, &PublicG, sizeof(int));
+            long long PublicG = this->getG();
+            n = write(socketFD, &PublicG, sizeof(long long));
             if (n < 0) {
                 perror("Error writing to socket");
             }
+            reply =Reply::Success;
+        }
+        else {
+            reply = Reply::Failure;
+        }
+    } else {
+        reply = Reply::Denied;
+    }
+    return reply;
+}
 
-            n = write(socketFD, &reply, sizeof(Reply));
+/**
+ *
+ * a, b = 1 , 2 ,3 ,5
+ * P = 1000 cifier
+ * G = 20 cifier
+ * Prvocisla vsetky
+ * a - > Prvy tpyec
+ * b - > Druhy typec
+ * P a G -> maju obaja lebo server to ma public
+ *
+ * (G ^ a) % P - > Prvy typec
+ * (G ^ b) % P - > Druhy typec
+ *
+ * Prvy typec posle (G ^ a) % P druhemu
+ * Druhy typec posle (G ^ b) % P prvemu
+ *
+ * Druhy typec (G ^ a) % P  - > (G ^ a ^ b) % P
+ * Prvy typec posle (G ^ b) % P - > (G ^ b ^ a) % P
+ *
+ * X ^ a ^ b = X ^(a*b) = X ^(b * a)
+ *
+ *
+ **/
+
+
+Reply Server::buildSymmetricConnection(const int socketFD){
+    std::string currentLogin;
+    currentLogin = this->getLoginByAuthorization(socketFD);
+    bool isAuthorized;
+    Reply reply;
+    std::cout << " Zpusteny BSC pred autorizaciou" << std::endl;
+    isAuthorized = !currentLogin.empty();
+    if (isAuthorized) {
+        // TODO prime number generator;
+        std::cout << " Zpusteny BSC po autorizacii" << std::endl;
+        long long privateKeyBase = 7;
+        long long privateKeyComponentClient;
+        long long privateKeyComponentServer;
+        privateKeyComponentServer = diffieHelmanStepOne(privateKeyBase);
+        reply = Reply::Allowed;
+        int n;
+        n = write(socketFD, &reply, sizeof(Reply));
+        if (n < 0) {
+            perror("Error writing to socket");
+        }
+
+        std::cout << "Idem na Client" << std::endl;
+        n = read(socketFD, &privateKeyComponentClient, sizeof(long long));
+        if (n < 0) {
+            perror("Error reading from socket");
+        }
+        n = read(socketFD, &reply, sizeof(Reply));
+        if (n < 0) {
+            perror("Error writing to socket");
+        }
+        if (reply == Reply::Agree) {
+
+            std::cout << "Idem na Server" << std::endl;
+            n = write(socketFD, &privateKeyComponentServer, sizeof(long long));
             if (n < 0) {
                 perror("Error reading from socket");
             }
-            if (reply == Reply::Success){
-                return reply;
-            }
+
+            long long tempKey = diffieHelmanStepTwo(privateKeyComponentClient, privateKeyComponentServer);
+            this->privateKeyMap.insert(std::pair<std::string, long long>(getLoginByAuthorization(socketFD), tempKey));
+            std::cout << "Success, Private key je vytvoreny." << std::endl;
+            reply = Reply::Success;
+        } else {
+            reply = Reply::Failure;
         }
-    } else {
-        return Reply::Denied;
     }
-    return Reply::Failure;
-}
-//TODO metoda ktora ohlasi servru ze prichadza component na tvorbu private key od klienta.
-Reply Server::getPrivatekeyComponent(const int socketFD) {
-    Reply reply;
+    else {
+        reply = Reply::Denied;
+    }
     return reply;
 }
-//TODO metoda ktora posle klientovy component na tvorbu private key pre login session.
-Reply Server::sendPrivateKeyComponent(const int socketFD) {
-    Reply reply;
-    return reply;
-}
-//TODO mutex, zapisovanie a tvorba symetrickeho kluca etc. etc.
-int Server::diffieHelmanStepOne() {
-    // TODO random PRIME number generator, zatial 3
-    int s = 3;
-    int temp = (G^s) % P;
+
+long long Server::diffieHelmanStepOne(long long Prime) {
+    std::cout << " Diffie 1" << std::endl;
+    long long s = Prime;
+    long long temp = (this->getG()^s) % this->getP();
     return temp;
+}
+
+long long Server::diffieHelmanStepTwo(long long privateKeyComponentClient, long long privateKeyBase) {
+    std::cout << " Diffie 2" << std::endl;
+    long long temp = (privateKeyComponentClient^privateKeyBase)%this->getP();
+    return temp;
+}
+
+long long Server::getP(){
+    long long temp = this->P;
+    return temp;
+}
+
+long long Server::getG(){
+    long long temp = this->G;
+    return temp;
+}
+
+std::string Server::decryptMessage(std::string EncryptedMessage) {
+    return nullptr;
 }
 
 //TODO Vytvoriy metodu na encrypt message, pomocov private key postavaneho z public variables, posielat len pre frienda.
