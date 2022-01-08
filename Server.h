@@ -37,6 +37,9 @@ public:
     Reply sendFile(const int socketFD);
 
     Reply getNewFiles(const int socketFD);
+  
+    Reply sendPublicKey(const int socketFD);
+  
 
     Reply createGroup(const int socketFD);
 
