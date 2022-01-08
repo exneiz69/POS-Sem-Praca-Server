@@ -23,6 +23,7 @@ Server::Server() {
     pthread_mutex_init(&this->friendListFileMutex, NULL);
     pthread_mutex_init(&this->historyMutex, NULL);
     pthread_mutex_init(&this->unreadFilesListMutex, NULL);
+    pthread_mutex_init(&this->encryptionKeyMutex, NULL);
 }
 
 Server::~Server() {
@@ -32,6 +33,7 @@ Server::~Server() {
     pthread_mutex_destroy(&this->friendListFileMutex);
     pthread_mutex_destroy(&this->historyMutex);
     pthread_mutex_destroy(&this->unreadFilesListMutex);
+    pthread_mutex_destroy(&this->encryptionKeyMutex);
 }
 
 Reply Server::registerNewUser(const int socketFD) {
@@ -156,6 +158,8 @@ Reply Server::authorizeUser(const int socketFD) {
 
         if (isExisting) {
             this->addNewIP(this->getIP(socketFD), user.login);
+
+            //TODO pridat tvorbu encryption kluca
 
             reply = Reply::Success;
         } else {
@@ -360,7 +364,7 @@ Reply Server::addFriend(const int socketFD) {
         isAlreadyInFriendList = this->checkFriend(currentLogin, user.login, true);
 
         if (isExisting && !isAlreadyInFriendList) {
-            this->addToFriendList(currentLogin, user.login, privateKey);
+            this->addToFriendList(currentLogin, user.login);
 
             reply = Reply::Success;
         } else {
@@ -740,11 +744,11 @@ bool Server::checkFriend(const std::string currentLogin, const std::string frien
 
     return isExisting;
 }
-void Server::addToFriendList(const std::string currentLogin, const std::string friendLogin, const int privateKey) {
+void Server::addToFriendList(const std::string currentLogin, const std::string friendLogin) {
     pthread_mutex_lock(&this->friendListFileMutex);
     std::ofstream outFile("FriendList.csv", std::ios::app);
 
-    outFile << currentLogin << ',' << friendLogin << ',' << privateKey << "," << "0" << std::endl;
+    outFile << currentLogin << ',' << friendLogin << ','<< "0" << std::endl;
     std::cout << "Login: " << currentLogin << " friend login: " << friendLogin << std::endl;
 
     outFile.close();
@@ -1216,11 +1220,20 @@ Reply Server::sendPublicKey(const int socketFD) {
 }
 //TODO metoda ktora ohlasi servru ze prichadza component na tvorbu private key od klienta.
 Reply Server::getPrivatekeyComponent(const int socketFD) {
-
+    Reply reply;
+    return reply;
 }
 //TODO metoda ktora posle klientovy component na tvorbu private key pre login session.
 Reply Server::sendPrivateKeyComponent(const int socketFD) {
-
+    Reply reply;
+    return reply;
+}
+//TODO mutex, zapisovanie a tvorba symetrickeho kluca etc. etc.
+int Server::diffieHelmanStepOne() {
+    // TODO random PRIME number generator, zatial 3
+    int s = 3;
+    int temp = (G^s) % P;
+    return temp;
 }
 
 //TODO Vytvoriy metodu na encrypt message, pomocov private key postavaneho z public variables, posielat len pre frienda.

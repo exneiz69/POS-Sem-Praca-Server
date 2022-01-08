@@ -57,6 +57,8 @@ private:
     pthread_mutex_t historyMutex;
 
     pthread_mutex_t unreadFilesListMutex;
+    //TODO mutex na vytvaranie a parovanie encryption klucov pridat do shenanigans
+    pthread_mutex_t encryptionKeyMutex;
 
     std::list<messageData> unreadMessages;
 
@@ -103,6 +105,8 @@ private:
     //TODO samotna metoda ktora bude decryptovat messages.
     std::string decryptMessage(std::string EncryptedMessage);
 
+
+    int diffieHelmanStepOne();
 
 public:
     Server(Server const &) = delete;
