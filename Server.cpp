@@ -1213,31 +1213,6 @@ Reply Server::sendPublicKey(const int socketFD) {
     return reply;
 }
 
-/**
- *
- * a, b = 1 , 2 ,3 ,5
- * P = 1000 cifier
- * G = 20 cifier
- * Prvocisla vsetky
- * a - > Prvy tpyec
- * b - > Druhy typec
- * P a G -> maju obaja lebo server to ma public
- *
- * (G ^ a) % P - > Prvy typec
- * (G ^ b) % P - > Druhy typec
- *
- * Prvy typec posle (G ^ a) % P druhemu
- * Druhy typec posle (G ^ b) % P prvemu
- *
- * Druhy typec (G ^ a) % P  - > (G ^ a ^ b) % P
- * Prvy typec posle (G ^ b) % P - > (G ^ b ^ a) % P
- *
- * X ^ a ^ b = X ^(a*b) = X ^(b * a)
- *
- *
- **/
-
-
 Reply Server::buildSymmetricConnection(const int socketFD){
     std::string currentLogin;
     currentLogin = this->getLoginByAuthorization(socketFD);
@@ -1257,13 +1232,13 @@ Reply Server::buildSymmetricConnection(const int socketFD){
         if (n < 0) {
             perror("Error writing to socket");
         }
-        std::cout << "Idem od klienta" << std::endl;
+//        std::cout << "Idem od klienta" << std::endl;
         n = read(socketFD, &privateKeyComponentClient, sizeof(long long));
         if (n < 0) {
             perror("Error reading from socket");
         }
 
-        std::cout << "Z klienta prislo " << privateKeyComponentClient << std::endl;
+//        std::cout << "Z klienta prislo " << privateKeyComponentClient << std::endl;
 
         n = read(socketFD, &reply, sizeof(Reply));
         if (n < 0) {
@@ -1271,16 +1246,15 @@ Reply Server::buildSymmetricConnection(const int socketFD){
         }
         if (reply == Reply::Agree) {
 
-            std::cout << "Idem do klienta " << std::endl;
+//            std::cout << "Idem do klienta " << std::endl;
             n = write(socketFD, &privateKeyComponentServer, sizeof(long long));
             if (n < 0) {
                 perror("Error reading from socket");
             }
-            std::cout << "Do klienta odislo  " << privateKeyComponentServer << std::endl;
-
+//            std::cout << "Do klienta odislo  " << privateKeyComponentServer << std::endl;
             long long tempKey = diffieHelmanStepTwo(privateKeyComponentClient, privateKeyBase);
             this->privateKeyMap.insert(std::pair<std::string, long long>(getLoginByAuthorization(socketFD), tempKey));
-            std::cout << "Success, Private key je vytvoreny. private key = " << tempKey << std::endl;
+//            std::cout << "Success, Private key je vytvoreny. private key = " << tempKey << std::endl;
             reply = Reply::Success;
         } else {
             reply = Reply::Failure;
@@ -1297,7 +1271,7 @@ long long Server::diffieHelmanStepOne(long long Prime) {
     long long g = this->getG();
     long long p = this->getP();
     long long temp = ((g^s) % p);
-    std::cout << " Diffie 1 = " << temp << std::endl;
+//    std::cout << " Diffie 1 = " << temp << std::endl;
     return temp;
 }
 
@@ -1305,7 +1279,7 @@ long long Server::diffieHelmanStepTwo(long long privateKeyComponentClient, long 
     long long g = this->getG();
     long long p = this->getP();
     long long temp = ((privateKeyComponentClient)^privateKeyBase) % p;
-    std::cout << " Diffie 2 = " << temp << std::endl;
+//    std::cout << " Diffie 2 = " << temp << std::endl;
     return temp;
 }
 
@@ -1327,7 +1301,7 @@ long long Server::primeNumberGenerator() {
     long long randomBeginning = ((rand()%20000)+ 20000) - (rand()%10000);
     long long primeNum = randomBeginning;
     bool isPrime = false;
-    std::cout << "Started searching for a sufficient prime, beginning is " << randomBeginning << std::endl;
+//    std::cout << "Started searching for a sufficient prime, beginning is " << randomBeginning << std::endl;
     while (isPrime == false) {
         isPrime = true;
             for (long long i = 2; i <= primeNum / 2; ++i) {
@@ -1339,7 +1313,7 @@ long long Server::primeNumberGenerator() {
         ++primeNum;
     }
     --primeNum;
-    std::cout << "Server has found a sufficient prime, " << primeNum << std::endl;
+//    std::cout << "Server has found a sufficient prime, " << primeNum << std::endl;
 
     return primeNum;
 }
