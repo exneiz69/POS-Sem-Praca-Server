@@ -19,6 +19,7 @@ Server::Server() {
     pthread_mutex_init(&this->friendListFileMutex, NULL);
     pthread_mutex_init(&this->historyMutex, NULL);
     pthread_mutex_init(&this->unreadFilesListMutex, NULL);
+    pthread_mutex_init(&this->groupDataMutex, NULL);
 }
 
 Server::~Server() {
@@ -28,6 +29,7 @@ Server::~Server() {
     pthread_mutex_destroy(&this->friendListFileMutex);
     pthread_mutex_destroy(&this->historyMutex);
     pthread_mutex_destroy(&this->unreadFilesListMutex);
+    pthread_mutex_destroy(&this->groupDataMutex);
 }
 
 Reply Server::registerNewUser(const int socketFD) {
@@ -247,7 +249,8 @@ Reply Server::getMessage(const int socketFD) {
         strncpy(user.login, message.to, 24);
         bool isExisting;
         isExisting = this->checkRegisteredUser(user);
-
+        bool isGroup;
+        isGroup = this->checkGroup(message.to);
         if (isExisting) {
             messageData fullMessage;
             strncpy(fullMessage.from, currentLogin.c_str(), currentLogin.size());
@@ -257,6 +260,20 @@ Reply Server::getMessage(const int socketFD) {
                       << std::endl;
             this->addNewMessage(fullMessage);
             reply = Reply::Success;
+        } else if (isGroup) {
+            if (checkUserInGroup(message.to, currentLogin))
+            {
+                messageData fullMessage;
+                strncpy(fullMessage.from, currentLogin.c_str(), currentLogin.size());
+                strncpy(fullMessage.to, message.to, 24);
+                strncpy(fullMessage.text, message.text, 256);
+                std::cout << "From: " << fullMessage.from << " to: " << fullMessage.to << " text: " << fullMessage.text
+                          << std::endl;
+                this->addNewMessageGroup(fullMessage, fullMessage.to, currentLogin);
+                reply = Reply::Success;
+            } else {
+                reply = Reply::Denied;
+            }
         } else {
             reply = Reply::Failure;
         }
@@ -761,7 +778,7 @@ void Server::deleteFromFriendList(const std::string currentLogin, const std::str
         std::getline(lineStream, isConfirmed, ',');
 
         if ((currentLogin != loginFrom || friendLogin != loginTo) && (friendLogin != loginFrom ||
-            currentLogin != loginTo)) {
+                                                                      currentLogin != loginTo)) {
             outFile << loginFrom << ',' << loginTo << ',' << isConfirmed << std::endl;
         }
     }
@@ -928,16 +945,6 @@ int* Server::getHistoryIndexes(const std::string login) {
     std::cout<<std::endl;
     return ret;
 }
-//=======
-//
-// *  Pre Easy testovanie je toto.
-//std::string Server::encryptPassword(const std::string password) {
-//    return password;
-//}
-//*/
-//
-//
-// *  Toto je basic encrypt vycucany z prsta
 
 std::string Server::encryptPassword(const std::string password){
     std::string unencryptedPassword = "Dano";
@@ -991,6 +998,8 @@ Reply Server::sendFile(const int socketFD) {
         strncpy(user.login, file.to, 24);
         bool isExisting;
         isExisting = this->checkRegisteredUser(user);
+        bool isGroup;
+        isGroup = this->checkGroup(file.to);
 
         if (isExisting) {
             fileData fd;
@@ -1002,8 +1011,21 @@ Reply Server::sendFile(const int socketFD) {
             this->addNewFile(fd);
             std::cout<<"yes"<<std::endl;
             reply = Reply::Success;
+        } else if (isGroup) {
+            // tusom
+            if (checkUserInGroup(file.to, currentLogin))
+            {
+                fileData fd;
+                strncpy(fd.from, currentLogin.c_str(), currentLogin.size());
+                strncpy(fd.to, file.to, 24);
+                strncpy(fd.data, file.data, sizeof(fileData::data));
+                strncpy(fd.name, file.name, sizeof(fileData::name));
+                this->addNewFileGroup(fd, fd.to, currentLogin);
+                reply = Reply::Success;
+            } else {
+                reply = Reply::Denied;
+            }
         } else {
-            std::cout<<"nooo"<<std::endl;
             reply = Reply::Failure;
         }
     } else {
@@ -1076,6 +1098,278 @@ void Server::addNewFile(const fileData &file) {
     this->unreadFiles.push_back(file);
     pthread_mutex_unlock(&this->unreadFilesListMutex);
 }
+
+void Server::addNewFileGroup(const fileData &file, std::string group, std::string login) {
+    pthread_mutex_lock(&this->unreadFilesListMutex);
+    std::list<std::string> recipients;
+    recipients = getGroupNames(group, login);
+
+    for (auto it = recipients.begin(); it != recipients.end(); ++it) {
+        strcpy((char*)file.from, group.c_str()); //TOTO URCUJE, CI ODOSIELATEL JE MENOVITY ALEBO SKUPINA
+        strcpy((char*)file.to, (*it).c_str());
+        this->unreadFiles.push_back(file);
+        std::cout<<"From: "<<file.from << " To: " << file.to << " File: " << file.name<<std::endl;
+    }
+
+    pthread_mutex_unlock(&this->unreadFilesListMutex);
+}
+
+Reply Server::createGroup(const int socketFD) {
+    std::string currentLogin;
+    currentLogin = this->getLoginByAuthorization(socketFD);
+    bool isAuthorized;
+    isAuthorized = !currentLogin.empty();
+    Reply reply;
+    if (isAuthorized) {
+        reply = Reply::Allowed;
+
+        int n;
+        n = write(socketFD, &reply, sizeof(Reply));
+        if (n < 0) {
+            perror("Error writing to socket");
+        }
+
+        groupData gd;
+        n = read(socketFD, &gd, sizeof(groupData));
+        if (n < 0) {
+            perror("Error reading from socket");
+        }
+
+        bool isExisting = false;
+        isExisting = checkGroup(gd.name);
+
+        if (!isExisting) {
+            this->addNewGroup(gd.name);
+            reply = Reply::Success;
+        } else {
+            reply = Reply::Failure;
+        }
+    } else {
+        reply = Reply::Denied;
+    }
+
+    return reply;
+}
+
+bool Server::checkGroup(const std::string groupName) {
+    pthread_mutex_lock(&this->groupDataMutex);
+    std::ifstream inFile("Group.csv");
+
+    // skupina1, matej, adam, fero,
+    // skupina2, jozo,
+
+    std::string line;
+    std::string name;
+    bool isExisting = false;
+    while (getline(inFile, line)) {
+        std::stringstream lineStream(line);
+        std::getline(lineStream, name, ',');
+
+        if (name == groupName)
+        {
+            isExisting = true;
+            break;
+        }
+    }
+    inFile.close();
+    pthread_mutex_unlock(&this->groupDataMutex);
+
+    return isExisting;
+}
+
+void Server::addNewGroup(const std::string groupName) {
+    pthread_mutex_lock(&this->groupDataMutex);
+//    std::ofstream outFile("Group.csv");
+    std::ofstream outFile("Group.csv", std::ios::app);
+
+    outFile << groupName << std::endl;
+    std::cout << "groupname : " << groupName << " added"<< std::endl;
+
+    outFile.close();
+    pthread_mutex_unlock(&this->groupDataMutex);
+
+
+    //* pomocny vypis
+    pthread_mutex_lock(&this->groupDataMutex);
+    std::ifstream testInFile("Group.csv");
+    std::string testLine;
+    while (getline(testInFile, testLine)) {
+        std::cout << "* " << testLine << std::endl;
+    }
+    testInFile.close();
+    pthread_mutex_unlock(&this->groupDataMutex);
+    //* pomocny vypis
+
+}
+
+Reply Server::addUserToGroup(const int socketFD) {
+    std::string currentLogin;
+    currentLogin = this->getLoginByAuthorization(socketFD);
+    bool isAuthorized;
+    isAuthorized = !currentLogin.empty();
+    Reply reply;
+    if (isAuthorized) {
+        reply = Reply::Allowed;
+
+        int n;
+        n = write(socketFD, &reply, sizeof(Reply));
+        if (n < 0) {
+            perror("Error writing to socket");
+        }
+
+        groupData gd;
+        n = read(socketFD, &gd, sizeof(groupData));
+        if (n < 0) {
+            perror("Error reading from socket");
+        }
+
+        bool isExisting = false;
+        isExisting = checkGroup(gd.name);
+
+        if (isExisting) {
+            pthread_mutex_lock(&this->groupDataMutex);
+            std::ifstream inFile("Group.csv");
+            std::ofstream outFile("Group.csv.temp");
+
+            std::string line;
+            std::string name;
+            bool alreadyAdded = false;
+            Reply reply;
+            reply = Reply::Failure;
+            while (getline(inFile, line)) {
+                std::stringstream lineStream(line);
+                std::getline(lineStream, name, ',');
+
+                if (!alreadyAdded && name == std::string(gd.name)) {
+                    if (!checkUserInGroup(line, currentLogin)) {
+                        outFile << line << ',' << currentLogin << std::endl;
+                        reply = Reply::Success;
+                    }
+                    alreadyAdded = true;
+                } else {
+                    outFile << line << std::endl;
+                }
+            }
+
+            inFile.close();
+            outFile.close();
+
+            remove("Group.csv");
+            rename("Group.csv.temp", "Group.csv");
+            pthread_mutex_unlock(&this->groupDataMutex);
+        } else {
+            reply = Reply::Failure;
+        }
+
+    } else {
+        reply = Reply::Denied;
+    }
+    //*
+    pthread_mutex_lock(&this->groupDataMutex);
+    std::ifstream testInFile("Group.csv");
+
+    std::string testLine;
+    while (getline(testInFile, testLine)) {
+        std::cout << "* " << testLine << std::endl;
+    }
+
+    testInFile.close();
+    pthread_mutex_unlock(&this->groupDataMutex);
+    //*
+
+    return reply;
+}
+
+bool Server::checkUserInGroup(const std::string group, const std::string login) {
+    bool isExisting = false;
+    bool end = false;
+
+    pthread_mutex_lock(&this->groupDataMutex);
+    std::ifstream inFile("Group.csv");
+
+    std::string line;
+    std::string groupName;
+    std::string userName;
+    while (getline(inFile, line)) {
+        if (end)
+            break;
+        std::stringstream lineStream(line);
+        std::getline(lineStream, groupName, ',');
+        if (groupName == group) {
+            while (std::getline(lineStream, userName, ',')) {
+                if (userName == login) {
+                    isExisting = true;
+                    end = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    inFile.close();
+    pthread_mutex_unlock(&this->groupDataMutex);
+
+    return isExisting;
+}
+
+void Server::addNewMessageGroup(messageData fullMessage, const std::string group, std::string login) {
+    pthread_mutex_lock(&this->unreadMessagesListMutex);
+    std::list<std::string> recipients;
+    recipients = getGroupNames(group, login);
+
+    for (auto it = recipients.begin(); it != recipients.end(); ++it) {
+        strcpy(fullMessage.from, group.c_str()); //TOTO URCUJE, CI ODOSIELATEL JE MENOVITY ALEBO SKUPINA
+        strcpy(fullMessage.to, (*it).c_str());
+        this->unreadMessages.push_back(fullMessage);
+        std::cout<<"From: "<<fullMessage.from << " To: " << fullMessage.to << " Text: " << fullMessage.text<<std::endl;
+    }
+
+    pthread_mutex_unlock(&this->unreadMessagesListMutex);
+}
+
+std::list<std::string> Server::getGroupNames(const std::string group, std::string login) {
+    //* pomocny vypis
+    pthread_mutex_lock(&this->groupDataMutex);
+    std::ifstream testInFile("Group.csv");
+    std::string testLine;
+    while (getline(testInFile, testLine)) {
+        std::cout << "* " << testLine << std::endl;
+    }
+    testInFile.close();
+    pthread_mutex_unlock(&this->groupDataMutex);
+    //* pomocny vypis
+
+
+
+
+    std::list<std::string> groupNames;
+
+    pthread_mutex_lock(&this->groupDataMutex);
+    std::ifstream inFile("Group.csv");
+
+    std::string line;
+    std::string groupName;
+    std::string userName;
+    while (getline(inFile, line)) {
+        std::stringstream lineStream(line);
+        std::getline(lineStream, groupName, ',');
+        if (groupName == group) {
+            while (std::getline(lineStream, userName, ',')) {
+                if (userName != login) {
+                    groupNames.push_back(userName);
+                    std::cout<<"---pushing---"<<std::endl;
+                }
+            }
+        }
+    }
+
+    inFile.close();
+    pthread_mutex_unlock(&this->groupDataMutex);
+
+    return groupNames;
+}
+
+
 
 //
 //
