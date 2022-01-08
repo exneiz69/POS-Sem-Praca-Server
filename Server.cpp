@@ -11,6 +11,7 @@
 #include <fstream>
 #include <sstream>
 #include <cstring>
+#include <stdlib.h>
 
 
 Server::Server() {
@@ -20,7 +21,6 @@ Server::Server() {
     pthread_mutex_init(&this->friendListFileMutex, NULL);
     pthread_mutex_init(&this->historyMutex, NULL);
     pthread_mutex_init(&this->unreadFilesListMutex, NULL);
-    pthread_mutex_init(&this->encryptionBuildingMutex, NULL);
 }
 
 Server::~Server() {
@@ -30,7 +30,6 @@ Server::~Server() {
     pthread_mutex_destroy(&this->friendListFileMutex);
     pthread_mutex_destroy(&this->historyMutex);
     pthread_mutex_destroy(&this->unreadFilesListMutex);
-    pthread_mutex_destroy(&this->encryptionBuildingMutex);
 }
 
 Reply Server::registerNewUser(const int socketFD) {
@@ -363,6 +362,7 @@ Reply Server::addFriend(const int socketFD) {
             reply = Reply::Failure;
         }
     } else {
+
         reply = Reply::Denied;
     }
 
@@ -403,6 +403,7 @@ Reply Server::removeFriend(const int socketFD) {
             perror("Error reading from socket");
         }
         std::cout << "Login: " << user.login << std::endl;
+
 
         bool isExisting;
         isExisting = this->checkRegisteredUser(user);
@@ -1242,12 +1243,11 @@ Reply Server::buildSymmetricConnection(const int socketFD){
     currentLogin = this->getLoginByAuthorization(socketFD);
     bool isAuthorized;
     Reply reply;
-    std::cout << " Zpusteny BSC pred autorizaciou" << std::endl;
+//    std::cout << " Zpusteny BSC pred autorizaciou" << std::endl;
     isAuthorized = !currentLogin.empty();
     if (isAuthorized) {
-        // TODO prime number generator;
-        std::cout << " Zpusteny BSC po autorizacii" << std::endl;
-        long long privateKeyBase = 7;
+//        std::cout << " Zpusteny BSC po autorizacii" << std::endl;
+        long long privateKeyBase = primeNumberGenerator();
         long long privateKeyComponentClient;
         long long privateKeyComponentServer;
         privateKeyComponentServer = diffieHelmanStepOne(privateKeyBase);
@@ -1257,27 +1257,30 @@ Reply Server::buildSymmetricConnection(const int socketFD){
         if (n < 0) {
             perror("Error writing to socket");
         }
-
-        std::cout << "Idem na Client" << std::endl;
+        std::cout << "Idem od klienta" << std::endl;
         n = read(socketFD, &privateKeyComponentClient, sizeof(long long));
         if (n < 0) {
             perror("Error reading from socket");
         }
+
+        std::cout << "Z klienta prislo " << privateKeyComponentClient << std::endl;
+
         n = read(socketFD, &reply, sizeof(Reply));
         if (n < 0) {
             perror("Error writing to socket");
         }
         if (reply == Reply::Agree) {
 
-            std::cout << "Idem na Server" << std::endl;
+            std::cout << "Idem do klienta " << std::endl;
             n = write(socketFD, &privateKeyComponentServer, sizeof(long long));
             if (n < 0) {
                 perror("Error reading from socket");
             }
+            std::cout << "Do klienta odislo  " << privateKeyComponentServer << std::endl;
 
-            long long tempKey = diffieHelmanStepTwo(privateKeyComponentClient, privateKeyComponentServer);
+            long long tempKey = diffieHelmanStepTwo(privateKeyComponentClient, privateKeyBase);
             this->privateKeyMap.insert(std::pair<std::string, long long>(getLoginByAuthorization(socketFD), tempKey));
-            std::cout << "Success, Private key je vytvoreny." << std::endl;
+            std::cout << "Success, Private key je vytvoreny. private key = " << tempKey << std::endl;
             reply = Reply::Success;
         } else {
             reply = Reply::Failure;
@@ -1290,15 +1293,19 @@ Reply Server::buildSymmetricConnection(const int socketFD){
 }
 
 long long Server::diffieHelmanStepOne(long long Prime) {
-    std::cout << " Diffie 1" << std::endl;
     long long s = Prime;
-    long long temp = (this->getG()^s) % this->getP();
+    long long g = this->getG();
+    long long p = this->getP();
+    long long temp = ((g^s) % p);
+    std::cout << " Diffie 1 = " << temp << std::endl;
     return temp;
 }
 
 long long Server::diffieHelmanStepTwo(long long privateKeyComponentClient, long long privateKeyBase) {
-    std::cout << " Diffie 2" << std::endl;
-    long long temp = (privateKeyComponentClient^privateKeyBase)%this->getP();
+    long long g = this->getG();
+    long long p = this->getP();
+    long long temp = ((privateKeyComponentClient)^privateKeyBase) % p;
+    std::cout << " Diffie 2 = " << temp << std::endl;
     return temp;
 }
 
@@ -1314,6 +1321,27 @@ long long Server::getG(){
 
 std::string Server::decryptMessage(std::string EncryptedMessage) {
     return nullptr;
+}
+
+long long Server::primeNumberGenerator() {
+    long long randomBeginning = ((rand()%20000)+ 20000) - (rand()%10000);
+    long long primeNum = randomBeginning;
+    bool isPrime = false;
+    std::cout << "Started searching for a sufficient prime, beginning is " << randomBeginning << std::endl;
+    while (isPrime == false) {
+        isPrime = true;
+            for (long long i = 2; i <= primeNum / 2; ++i) {
+                if (primeNum % i == 0) {
+                    isPrime = false;
+                    break;
+                }
+            }
+        ++primeNum;
+    }
+    --primeNum;
+    std::cout << "Server has found a sufficient prime, " << primeNum << std::endl;
+
+    return primeNum;
 }
 
 //TODO Vytvoriy metodu na encrypt message, pomocov private key postavaneho z public variables, posielat len pre frienda.

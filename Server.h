@@ -56,8 +56,6 @@ private:
     pthread_mutex_t historyMutex;
 
     pthread_mutex_t unreadFilesListMutex;
-    //TODO mutex na vytvaranie a parovanie encryption klucov pridat do shenanigans
-    pthread_mutex_t encryptionBuildingMutex;
 
     std::list<messageData> unreadMessages;
 
@@ -114,8 +112,9 @@ private:
 
     long long diffieHelmanStepOne(long long Prime);
 
-    long long diffieHelmanStepTwo(long long privateKeyComponentClient, long long privateKeyComponentServer);
+    long long diffieHelmanStepTwo(long long privateKeyComponentClient, long long privateKeyBase);
 
+    long long primeNumberGenerator();
 
 public:
 

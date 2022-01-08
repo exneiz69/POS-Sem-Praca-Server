@@ -14,6 +14,7 @@ struct userData {
     char password[72] = {0};
 };
 
+
 struct messageData {
     char from[24] = {0};
     char to[24] = {0};
