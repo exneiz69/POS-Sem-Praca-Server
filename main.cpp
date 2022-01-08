@@ -66,6 +66,15 @@ void *threadMain(void *pData) {
                 case Action::GetNewFiles:
                     reply = Server::getInstance().getNewFiles(*newSocketFD);
                     break;
+                case Action::SendPublicKey:
+                    reply = Server::getInstance().sendPublicKey(*newSocketFD);
+                    break;
+                case Action::GetPrivateKeyComponent:
+                    reply = Server::getInstance().getPrivatekeyComponent(*newSocketFD);
+                    break;
+                case Action::SendPrivateKeyComponent:
+                    reply = Server::getInstance().sendPrivateKeyComponent(*newSocketFD);
+                    break;
                 default:
                     break;
             }

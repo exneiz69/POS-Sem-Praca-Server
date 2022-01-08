@@ -1214,3 +1214,23 @@ Reply Server::sendPublicKey(const int socketFD) {
     }
     return Reply::Failure;
 }
+//TODO metoda ktora ohlasi servru ze prichadza component na tvorbu private key od klienta.
+Reply Server::getPrivatekeyComponent(const int socketFD) {
+
+}
+//TODO metoda ktora posle klientovy component na tvorbu private key pre login session.
+Reply Server::sendPrivateKeyComponent(const int socketFD) {
+
+}
+
+//TODO Vytvoriy metodu na encrypt message, pomocov private key postavaneho z public variables, posielat len pre frienda.
+std::string encryptMessage(std::string UnencryptedMessage) {
+    std::string encryptedMessage = UnencryptedMessage;
+    return encryptedMessage;
+}
+
+//TODO Vytvoriy metodu na deencrypt message, pomocov private key postavaneho z public variables, posielat len pre frienda.
+std::string decryptMessage(std::string EncryptedMessage) {
+    std::string unencryptedMessage = EncryptedMessage;
+    return unencryptedMessage;
+}

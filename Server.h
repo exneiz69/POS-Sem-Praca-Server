@@ -39,6 +39,10 @@ public:
     Reply getNewFiles(const int socketFD);
   
     Reply sendPublicKey(const int socketFD);
+
+    Reply getPrivatekeyComponent(const int socketFD);
+
+    Reply sendPrivateKeyComponent(const int socketFD);
   
 
 private:
@@ -92,6 +96,12 @@ private:
     int* getHistoryIndexes(const std::string login);
 
     std::string encryptPassword(std::string password);
+
+    //TODO samotna metoda ktora bude encryptovat messages.
+    std::string encryptMessage(std::string UnencryptedMessage);
+
+    //TODO samotna metoda ktora bude decryptovat messages.
+    std::string decryptMessage(std::string EncryptedMessage);
 
 
 public:
