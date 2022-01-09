@@ -72,7 +72,7 @@ CMAKE_BINARY_DIR = /tmp/tmp.lPuRSoB3AE/cmake-build-debug
 # Directory level rules for the build root directory
 
 # The main recursive "all" target.
-all: CMakeFiles/Server.dir/all
+all: CMakeFiles/server.dir/all
 
 .PHONY : all
 
@@ -82,36 +82,36 @@ preinstall:
 .PHONY : preinstall
 
 # The main recursive "clean" target.
-clean: CMakeFiles/Server.dir/clean
+clean: CMakeFiles/server.dir/clean
 
 .PHONY : clean
 
 #=============================================================================
-# Target rules for target CMakeFiles/Server.dir
+# Target rules for target CMakeFiles/server.dir
 
 # All Build rule for target.
-CMakeFiles/Server.dir/all:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Server.dir/build.make CMakeFiles/Server.dir/depend
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Server.dir/build.make CMakeFiles/Server.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/tmp/tmp.lPuRSoB3AE/cmake-build-debug/CMakeFiles --progress-num=1,2,3 "Built target Server"
-.PHONY : CMakeFiles/Server.dir/all
+CMakeFiles/server.dir/all:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/server.dir/build.make CMakeFiles/server.dir/depend
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/server.dir/build.make CMakeFiles/server.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/tmp/tmp.lPuRSoB3AE/cmake-build-debug/CMakeFiles --progress-num=1,2,3 "Built target server"
+.PHONY : CMakeFiles/server.dir/all
 
 # Build rule for subdir invocation for target.
-CMakeFiles/Server.dir/rule: cmake_check_build_system
+CMakeFiles/server.dir/rule: cmake_check_build_system
 	$(CMAKE_COMMAND) -E cmake_progress_start /tmp/tmp.lPuRSoB3AE/cmake-build-debug/CMakeFiles 3
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/Server.dir/all
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/server.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /tmp/tmp.lPuRSoB3AE/cmake-build-debug/CMakeFiles 0
-.PHONY : CMakeFiles/Server.dir/rule
+.PHONY : CMakeFiles/server.dir/rule
 
 # Convenience name for target.
-Server: CMakeFiles/Server.dir/rule
+server: CMakeFiles/server.dir/rule
 
-.PHONY : Server
+.PHONY : server
 
 # clean rule for target.
-CMakeFiles/Server.dir/clean:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Server.dir/build.make CMakeFiles/Server.dir/clean
-.PHONY : CMakeFiles/Server.dir/clean
+CMakeFiles/server.dir/clean:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/server.dir/build.make CMakeFiles/server.dir/clean
+.PHONY : CMakeFiles/server.dir/clean
 
 #=============================================================================
 # Special targets to cleanup operation of make.

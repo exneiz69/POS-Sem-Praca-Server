@@ -44,12 +44,8 @@ public:
     Reply sendPublicKey(const int socketFD);
 
     Reply buildSymmetricConnection(const int socketFD);
-
+  
     Reply sendNewEncryptedMessages(const int socketFD);
-
-    Reply createGroup(const int socketFD);
-
-    Reply addUserToGroup(const int socketFD);
 
 private:
     pthread_mutex_t usersFileMutex;
@@ -63,8 +59,6 @@ private:
     pthread_mutex_t historyMutex;
 
     pthread_mutex_t unreadFilesListMutex;
-
-    pthread_mutex_t groupDataMutex;
 
     std::list<messageData> unreadMessages;
 
@@ -122,17 +116,6 @@ private:
 
     long long primeNumberGenerator();
 
-    bool checkGroup(const std::string groupName);
-
-    void addNewGroup(const std::string groupName);
-
-    bool checkUserInGroup(const std::string group, const std::string login);
-
-    void addNewMessageGroup(messageData fullMessage, const std::string group, std::string login);
-
-    std::list<std::string> getGroupNames(const std::string group, std::string login);
-
-    void addNewFileGroup(const fileData &file, std::string group, std::string login);
 public:
 
     long long getG();
