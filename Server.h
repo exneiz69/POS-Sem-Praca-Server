@@ -120,6 +120,7 @@ private:
 
     long long diffieHelmanStepTwo(long long privateKeyComponentClient, long long privateKeyBase);
 
+
     long long primeNumberGenerator();
 
     bool checkGroup(const std::string groupName);

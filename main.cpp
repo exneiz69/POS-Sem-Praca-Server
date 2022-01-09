@@ -146,6 +146,7 @@ int main(int argc, char *argv[]) {
         pthread_create(&thread[i], &threadAttr, &threadMain, new int(newSocketFD));
     }
 
+
     pthread_attr_destroy(&threadAttr);
 
     close(socketFD);

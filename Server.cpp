@@ -1466,6 +1466,7 @@ std::list<std::string> Server::getGroupNames(const std::string group, std::strin
 //>>>>>>> origin/master
 
 
+
 Reply Server::sendPublicKey(const int socketFD) {
     std::string currentLogin;
     currentLogin = this->getLoginByAuthorization(socketFD);
