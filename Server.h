@@ -6,6 +6,7 @@
 #include <pthread.h>
 #include <list>
 #include <string>
+#include <map>
 
 class Server {
 public:
@@ -26,6 +27,14 @@ public:
 
     Reply sendNewMessages(int socketFD);
 
+    Reply getEncryptedMessage(int socketFD);
+
+    Reply sendNewEncryptedMessages(int socketFD);
+
+    Reply sendPublicKey(int socketFD);
+
+    Reply buildSymmetricConnection(int socketFD);
+
     Reply addFriend(int socketFD);
 
     Reply removeFriend(int socketFD);
@@ -42,12 +51,18 @@ public:
 
     Reply addUserToGroup(int socketFD);
 
+    long long getG();
+
+    long long getP();
+
 private:
     pthread_mutex_t usersFileMutex{};
 
     pthread_mutex_t authorizedUsersFileMutex{};
 
     pthread_mutex_t unreadMessagesListMutex{};
+
+    pthread_mutex_t unreadEncryptedMessagesListMutex{};
 
     pthread_mutex_t friendListFileMutex{};
 
@@ -59,7 +74,15 @@ private:
 
     std::list<messageData> unreadMessages;
 
+    std::list<messageData> unreadEncryptedMessages;
+
     std::list<fileData> unreadFiles;
+
+    std::map<std::string,long long> privateKeyMap;
+
+    long long P = 4745186671;
+
+    long long G = 17;
 
     Server();
 
@@ -83,6 +106,8 @@ private:
 
     void addNewMessage(const messageData &message);
 
+    void addNewEncryptedMessage(const messageData &message);
+
     void addNewFile(const fileData &file);
 
     bool checkFriend(const std::string& currentLogin, const std::string& friendLogin, bool bilateralCheck = false, bool checkConfirmation = false);
@@ -97,6 +122,12 @@ private:
 
     std::string encryptPassword(const std::string& password);
 
+    long long diffieHelmanStepOne(long long prime);
+
+    long long diffieHelmanStepTwo(long long privateKeyComponentClient, long long privateKeyBase);
+
+    long long primeNumberGenerator();
+
     bool checkGroup(const std::string& groupName);
 
     void addNewGroup(const std::string& groupName);
@@ -108,6 +139,7 @@ private:
     std::list<std::string> getGroupNames(const std::string& group, const std::string& login);
 
     void addNewFileGroup(const fileData &file, const std::string& group, const std::string& login);
+
 public:
     Server(Server const &) = delete;
 

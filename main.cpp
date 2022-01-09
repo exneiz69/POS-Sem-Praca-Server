@@ -48,6 +48,18 @@ void *threadMain(void *pData) {
                 case Action::GetNewMessages:
                     reply = Server::getInstance().sendNewMessages(*newSocketFD);
                     break;
+                case Action::SendEncryptedMessage:
+                    reply = Server::getInstance().getEncryptedMessage(*newSocketFD);
+                    break;
+                case Action::GetNewEncryptedMessages:
+                    reply = Server::getInstance().sendNewEncryptedMessages(*newSocketFD);
+                    break;
+                case Action::GetPublicKey:
+                    reply = Server::getInstance().sendPublicKey(*newSocketFD);
+                    break;
+                case Action::BuildSymmetricConnection:
+                    reply = Server::getInstance().buildSymmetricConnection(*newSocketFD);
+                    break;
                 case Action::AddFriend:
                     reply = Server::getInstance().addFriend(*newSocketFD);
                     break;
