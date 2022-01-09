@@ -1347,14 +1347,19 @@ Reply Server::getEncryptedMessage(const int socketFD) {
                 auto it = this->privateKeyMap.find(getLoginByAuthorization(socketFD));
                 long long tempKey = it->second;
                 decryptedMessage = fullMessage;
-                for (int i = 0; i < sizeof(decryptedMessage.from); ++i) {
+
+                std::string from = decryptedMessage.from;
+                std::string to = decryptedMessage.to;
+                std::string text = decryptedMessage.text;
+
+                for (int i = 0; i < from.length(); ++i) {
                     decryptedMessage.from[i] = (fullMessage.from[i] - (tempKey% 74));
                 }
-                for (int i = 0; i < sizeof(decryptedMessage.to); ++i) {
+                for (int i = 0; i < to.length(); ++i) {
                     decryptedMessage.to[i] = (fullMessage.to[i] - (tempKey% 74));
                 }
                 if (this->checkFriend(user.login, decryptedMessage.to)) {
-                for (int i = 0; i < sizeof(decryptedMessage.text); ++i) {
+                for (int i = 0; i < text.length(); ++i) {
                     decryptedMessage.text[i] = (fullMessage.text[i] - (tempKey% 74));
                 }
 
@@ -1424,15 +1429,20 @@ void Server::addNewEncryptedMessage(const messageData &message) {
                         decryptedMessage = (*it);
                         encryptedMessage = (*it);
 
+                        std::string from = decryptedMessage.from;
+                        std::string to = decryptedMessage.to;
+                        std::string text = decryptedMessage.text;
+
+
                         std::cout << "Decrypted message: From: " << decryptedMessage.from << " to: " << decryptedMessage.to << " text: " << decryptedMessage.text << std::endl;
-                        for (int i = 0; i < sizeof(decryptedMessage.from); ++i) {
-                            encryptedMessage.from[i] = (decryptedMessage.to[i] + (tempKey% 74));
+                        for (int i = 0; i < from.length(); ++i) {
+                            encryptedMessage.from[i] = (from[i] + (tempKey% 74));
                         }
-                        for (int i = 0; i < sizeof(decryptedMessage.to); ++i) {
-                            encryptedMessage.to[i] = (decryptedMessage.to[i] + (tempKey% 74));
+                        for (int i = 0; i < to.length(); ++i) {
+                            encryptedMessage.to[i] = (to[i] + (tempKey% 74));
                         }
-                        for (int i = 0; i < sizeof(decryptedMessage.text); ++i) {
-                            encryptedMessage.text[i] = (decryptedMessage.to[i] + (tempKey% 74));
+                        for (int i = 0; i < text.length(); ++i) {
+                            encryptedMessage.text[i] = (text[i] + (tempKey% 74));
                         }
                         std::cout << "Encrypted message: From: " << encryptedMessage.from << " to: " << encryptedMessage.to << " text: " << encryptedMessage.text << std::endl;
                         n = write(socketFD, &(*it), sizeof(messageData));
