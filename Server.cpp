@@ -835,10 +835,12 @@ Reply Server::getHistory(const int socketFD) {
             pthread_mutex_unlock(&this->historyFileMutex);
         }
         reply = Reply::Success;
+        delete[] historyIndexes;
+        historyIndexes = nullptr;
     } else {
         reply = Reply::Denied;
     }
-
+    
     //*
     pthread_mutex_lock(&this->historyFileMutex);
     std::ifstream testInFile("History.csv");
