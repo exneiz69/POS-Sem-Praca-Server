@@ -14,51 +14,48 @@ public:
         return instance;
     }
 
-    Reply registerNewUser(const int socketFD);
+    Reply registerNewUser(int socketFD);
 
-    Reply unregisterUser(const int socketFD);
+    Reply unregisterUser(int socketFD);
 
-    Reply authorizeUser(const int socketFD);
+    Reply authorizeUser(int socketFD);
 
-    Reply deauthorizeUser(const int socketFD); // logout
+    Reply deauthorizeUser(int socketFD); // logout
 
-    Reply getMessage(const int socketFD);
+    Reply getMessage(int socketFD);
 
-    Reply sendNewMessages(const int socketFD);
+    Reply sendNewMessages(int socketFD);
 
-    Reply addFriend(const int socketFD);
+    Reply addFriend(int socketFD);
 
-    Reply removeFriend(const int socketFD);
+    Reply removeFriend(int socketFD);
 
-    Reply getFriendRequests(const int socketFD);
+    Reply getFriendRequests(int socketFD);
 
-    Reply getHistory(const int socketFD);
+    Reply getHistory(int socketFD);
 
-    Reply sendFile(const int socketFD);
+    Reply sendFile(int socketFD);
 
-    Reply getNewFiles(const int socketFD);
-  
-    Reply sendPublicKey(const int socketFD);
-  
+    Reply getNewFiles(int socketFD);
 
-    Reply createGroup(const int socketFD);
+    Reply createGroup(int socketFD);
 
-    Reply addUserToGroup(const int socketFD);
+    Reply addUserToGroup(int socketFD);
 
 private:
-    pthread_mutex_t usersFileMutex;
+    pthread_mutex_t usersFileMutex{};
 
-    pthread_mutex_t authorizedUsersFileMutex;
+    pthread_mutex_t authorizedUsersFileMutex{};
 
-    pthread_mutex_t unreadMessagesListMutex;
+    pthread_mutex_t unreadMessagesListMutex{};
 
-    pthread_mutex_t friendListFileMutex;
+    pthread_mutex_t friendListFileMutex{};
 
-    pthread_mutex_t historyMutex;
+    pthread_mutex_t historyFileMutex{};
 
-    pthread_mutex_t unreadFilesListMutex;
+    pthread_mutex_t unreadFilesListMutex{};
 
-    pthread_mutex_t groupDataMutex;
+    pthread_mutex_t groupsFileMutex{};
 
     std::list<messageData> unreadMessages;
 
@@ -67,49 +64,50 @@ private:
     Server();
 
     ~Server();
-    bool checkRegisteredUser(const userData &user, const bool comparePassword = false);
 
-    bool checkAuthorization(const int socketFD);
+    bool checkRegisteredUser(const userData &user, bool comparePassword = false);
+
+    bool checkAuthorization(int socketFD);
 
     void addNewUser(const userData &newUser);
 
-    void addNewIP(const std::string newIP, const std::string registeredLogin);
+    void addNewIP(const std::string& newIP, const std::string& registeredLogin);
 
-    void deleteRegisteredUser(const std::string registeredLogin);
+    void deleteRegisteredUser(const std::string& registeredLogin);
 
-    void deleteAuthorizedIP(const std::string authorizedIP);
+    void deleteAuthorizedIP(const std::string& authorizedIP);
 
-    std::string getIP(const int socketFD);
+    std::string getIP(int socketFD);
 
-    std::string getLoginByAuthorization(const int socketFD);
+    std::string getLoginByAuthorization(int socketFD);
 
     void addNewMessage(const messageData &message);
 
     void addNewFile(const fileData &file);
 
-    bool checkFriend(const std::string currentLogin, const std::string friendLogin, const bool bilateralCheck = false, const bool checkConfirmation = false);
+    bool checkFriend(const std::string& currentLogin, const std::string& friendLogin, bool bilateralCheck = false, bool checkConfirmation = false);
 
-    void addToFriendList(const std::string currentLogin, const std::string friendLogin);
+    void addToFriendList(const std::string& currentLogin, const std::string& friendLogin);
 
-    void deleteFromFriendList(const std::string currentLogin, const std::string friendLogin);
+    void deleteFromFriendList(const std::string& currentLogin, const std::string& friendLogin);
 
-    int getFriendRequestsNumber(const std::string login);
+    int getFriendRequestsNumber(const std::string& login);
 
-    int* getHistoryIndexes(const std::string login);
+    int* getHistoryIndexes(const std::string& login);
 
-    std::string encryptPassword(std::string password);
+    std::string encryptPassword(const std::string& password);
 
-    bool checkGroup(const std::string groupName);
+    bool checkGroup(const std::string& groupName);
 
-    void addNewGroup(const std::string groupName);
+    void addNewGroup(const std::string& groupName);
 
-    bool checkUserInGroup(const std::string group, const std::string login);
+    bool checkUserInGroup(const std::string& group, const std::string& login);
 
-    void addNewMessageGroup(messageData fullMessage, const std::string group, std::string login);
+    void addNewMessageGroup(messageData fullMessage, const std::string& group, const std::string& login);
 
-    std::list<std::string> getGroupNames(const std::string group, std::string login);
+    std::list<std::string> getGroupNames(const std::string& group, const std::string& login);
 
-    void addNewFileGroup(const fileData &file, std::string group, std::string login);
+    void addNewFileGroup(const fileData &file, const std::string& group, const std::string& login);
 public:
     Server(Server const &) = delete;
 

@@ -12,18 +12,14 @@
 #include <sstream>
 #include <cstring>
 
-// Prime public key values
-long long P = 4745186671; // Horna modularna hranica Diffie-Hellmanovho algoritmu
-int G = 17; // Mocneny zaklad Diffie-Hellmanovho algoritmu
-
 Server::Server() {
-    pthread_mutex_init(&this->usersFileMutex, NULL);
-    pthread_mutex_init(&this->authorizedUsersFileMutex, NULL);
-    pthread_mutex_init(&this->unreadMessagesListMutex, NULL);
-    pthread_mutex_init(&this->friendListFileMutex, NULL);
-    pthread_mutex_init(&this->historyMutex, NULL);
-    pthread_mutex_init(&this->unreadFilesListMutex, NULL);
-    pthread_mutex_init(&this->groupDataMutex, NULL);
+    this->usersFileMutex = PTHREAD_MUTEX_INITIALIZER;
+    this->authorizedUsersFileMutex = PTHREAD_MUTEX_INITIALIZER;
+    this->unreadMessagesListMutex = PTHREAD_MUTEX_INITIALIZER;
+    this->friendListFileMutex = PTHREAD_MUTEX_INITIALIZER;
+    this->historyFileMutex = PTHREAD_MUTEX_INITIALIZER;
+    this->unreadFilesListMutex = PTHREAD_MUTEX_INITIALIZER;
+    this->groupsFileMutex = PTHREAD_MUTEX_INITIALIZER;
 }
 
 Server::~Server() {
@@ -31,9 +27,9 @@ Server::~Server() {
     pthread_mutex_destroy(&this->authorizedUsersFileMutex);
     pthread_mutex_destroy(&this->unreadMessagesListMutex);
     pthread_mutex_destroy(&this->friendListFileMutex);
-    pthread_mutex_destroy(&this->historyMutex);
+    pthread_mutex_destroy(&this->historyFileMutex);
     pthread_mutex_destroy(&this->unreadFilesListMutex);
-    pthread_mutex_destroy(&this->groupDataMutex);
+    pthread_mutex_destroy(&this->groupsFileMutex);
 }
 
 Reply Server::registerNewUser(const int socketFD) {
@@ -43,7 +39,7 @@ Reply Server::registerNewUser(const int socketFD) {
     if (!isAuthorized) {
         reply = Reply::Allowed;
 
-        int n;
+        ssize_t n;
         n = write(socketFD, &reply, sizeof(Reply));
         if (n < 0) {
             perror("Error writing to socket");
@@ -54,6 +50,7 @@ Reply Server::registerNewUser(const int socketFD) {
         if (n < 0) {
             perror("Error reading from socket");
         }
+        std::cout << "Login: " << newUser.login << std::endl;
 
         bool isAlreadyExisting;
         isAlreadyExisting = this->checkRegisteredUser(newUser);
@@ -73,6 +70,7 @@ Reply Server::registerNewUser(const int socketFD) {
     pthread_mutex_lock(&this->usersFileMutex);
     std::ifstream testInFile("Users.csv");
 
+    std::cout << "Users:" << std::endl;
     std::string testLine;
     while (getline(testInFile, testLine)) {
         std::cout << "* " << testLine << std::endl;
@@ -81,8 +79,6 @@ Reply Server::registerNewUser(const int socketFD) {
     testInFile.close();
     pthread_mutex_unlock(&this->usersFileMutex);
     //*
-
-    std::cout << "REPLY " << (int) reply << std::endl;
 
     return reply;
 }
@@ -96,7 +92,7 @@ Reply Server::unregisterUser(const int socketFD) {
     if (isAuthorized) {
         reply = Reply::Allowed;
 
-        int n;
+        ssize_t n;
         n = write(socketFD, &reply, sizeof(Reply));
         if (n < 0) {
             perror("Error writing to socket");
@@ -121,6 +117,7 @@ Reply Server::unregisterUser(const int socketFD) {
     pthread_mutex_lock(&this->usersFileMutex);
     std::ifstream testInFile("Users.csv");
 
+    std::cout << "Users:" << std::endl;
     std::string testLine;
     while (getline(testInFile, testLine)) {
         std::cout << "* " << testLine << std::endl;
@@ -140,7 +137,7 @@ Reply Server::authorizeUser(const int socketFD) {
     if (!isAlreadyAuthorized) {
         reply = Reply::Allowed;
 
-        int n;
+        ssize_t n;
         n = write(socketFD, &reply, sizeof(Reply));
         if (n < 0) {
             perror("Error writing to socket");
@@ -151,7 +148,7 @@ Reply Server::authorizeUser(const int socketFD) {
         if (n < 0) {
             perror("Error reading from socket");
         }
-        std::cout << "Login: " << user.login << " password: " << encryptPassword(user.password)  <<std::endl;
+        std::cout << "Login: " << user.login << std::endl;
 
         bool isExisting;
         isExisting = this->checkRegisteredUser(user, true);
@@ -171,6 +168,7 @@ Reply Server::authorizeUser(const int socketFD) {
     pthread_mutex_lock(&this->authorizedUsersFileMutex);
     std::ifstream testInFile("AuthorizedUsers.csv");
 
+    std::cout << "AuthorizedUsers:" << std::endl;
     std::string testLine;
     while (getline(testInFile, testLine)) {
         std::cout << "* " << testLine << std::endl;
@@ -190,7 +188,7 @@ Reply Server::deauthorizeUser(const int socketFD) {
     if (isAuthorized) {
         reply = Reply::Allowed;
 
-        int n;
+        ssize_t n;
         n = write(socketFD, &reply, sizeof(Reply));
         if (n < 0) {
             perror("Error writing to socket");
@@ -214,6 +212,7 @@ Reply Server::deauthorizeUser(const int socketFD) {
     pthread_mutex_lock(&this->authorizedUsersFileMutex);
     std::ifstream testInFile("AuthorizedUsers.csv");
 
+    std::cout << "AuthorizedUsers:" << std::endl;
     std::string testLine;
     while (getline(testInFile, testLine)) {
         std::cout << "* " << testLine << std::endl;
@@ -222,8 +221,6 @@ Reply Server::deauthorizeUser(const int socketFD) {
     testInFile.close();
     pthread_mutex_unlock(&this->authorizedUsersFileMutex);
     //*
-
-    std::cout << "REPLY " << (int) reply << std::endl;
 
     return reply;
 }
@@ -237,7 +234,7 @@ Reply Server::getMessage(const int socketFD) {
     if (isAuthorized) {
         reply = Reply::Allowed;
 
-        int n;
+        ssize_t n;
         n = write(socketFD, &reply, sizeof(Reply));
         if (n < 0) {
             perror("Error writing to socket");
@@ -265,8 +262,7 @@ Reply Server::getMessage(const int socketFD) {
             this->addNewMessage(fullMessage);
             reply = Reply::Success;
         } else if (isGroup) {
-            if (checkUserInGroup(message.to, currentLogin))
-            {
+            if (checkUserInGroup(message.to, currentLogin)) {
                 messageData fullMessage;
                 strncpy(fullMessage.from, currentLogin.c_str(), currentLogin.size());
                 strncpy(fullMessage.to, message.to, 24);
@@ -297,16 +293,16 @@ Reply Server::sendNewMessages(const int socketFD) {
     if (isAuthorized) {
         reply = Reply::Allowed;
 
-        int n;
-        n = write(socketFD, &reply, sizeof(Reply));
+        ssize_t n;
+        n = write(socketFD, &reply, (int) sizeof(Reply));
         if (n < 0) {
             perror("Error writing to socket");
         }
 
         int newMessagesNumber = 0;
         pthread_mutex_lock(&this->unreadMessagesListMutex);
-        for (auto it = this->unreadMessages.begin(); it != this->unreadMessages.end(); ++it) {
-            if (currentLogin == (*it).to) {
+        for (auto &unreadMessage: this->unreadMessages) {
+            if (currentLogin == unreadMessage.to) {
                 newMessagesNumber++;
             }
         }
@@ -324,8 +320,6 @@ Reply Server::sendNewMessages(const int socketFD) {
             for (auto it = this->unreadMessages.begin(); it != this->unreadMessages.end();) {
                 if (currentLogin == (*it).to) {
                     std::cout << "From: " << (*it).from << " to: " << (*it).to << " text: " << (*it).text << std::endl;
-
-
 
                     n = write(socketFD, &(*it), sizeof(messageData));
                     if (n < 0) {
@@ -358,7 +352,7 @@ Reply Server::addFriend(const int socketFD) {
     if (isAuthorized) {
         reply = Reply::Allowed;
 
-        int n;
+        ssize_t n;
         n = write(socketFD, &reply, sizeof(Reply));
         if (n < 0) {
             perror("Error writing to socket");
@@ -369,7 +363,7 @@ Reply Server::addFriend(const int socketFD) {
         if (n < 0) {
             perror("Error reading from socket");
         }
-        std::cout << "Login: " << user.login << std::endl;
+        std::cout << "Friend login: " << user.login << std::endl;
 
         bool isExisting;
         isExisting = this->checkRegisteredUser(user);
@@ -377,7 +371,7 @@ Reply Server::addFriend(const int socketFD) {
         isAlreadyInFriendList = this->checkFriend(currentLogin, user.login, true);
 
         if (isExisting && !isAlreadyInFriendList) {
-            this->addToFriendList(currentLogin, user.login, privateKey);
+            this->addToFriendList(currentLogin, user.login);
 
             reply = Reply::Success;
         } else {
@@ -391,6 +385,7 @@ Reply Server::addFriend(const int socketFD) {
     pthread_mutex_lock(&this->friendListFileMutex);
     std::ifstream testInFile("FriendList.csv");
 
+    std::cout << "FriendList:" << std::endl;
     std::string testLine;
     while (getline(testInFile, testLine)) {
         std::cout << "* " << testLine << std::endl;
@@ -412,7 +407,7 @@ Reply Server::removeFriend(const int socketFD) {
     if (isAuthorized) {
         reply = Reply::Allowed;
 
-        int n;
+        ssize_t n;
         n = write(socketFD, &reply, sizeof(Reply));
         if (n < 0) {
             perror("Error writing to socket");
@@ -423,7 +418,7 @@ Reply Server::removeFriend(const int socketFD) {
         if (n < 0) {
             perror("Error reading from socket");
         }
-        std::cout << "Login: " << user.login << std::endl;
+        std::cout << "Friend login: " << user.login << std::endl;
 
         bool isExisting;
         isExisting = this->checkRegisteredUser(user);
@@ -445,6 +440,7 @@ Reply Server::removeFriend(const int socketFD) {
     pthread_mutex_lock(&this->friendListFileMutex);
     std::ifstream testInFile("FriendList.csv");
 
+    std::cout << "FriendList:" << std::endl;
     std::string testLine;
     while (getline(testInFile, testLine)) {
         std::cout << "* " << testLine << std::endl;
@@ -466,7 +462,7 @@ Reply Server::getFriendRequests(const int socketFD) {
     if (isAuthorized) {
         reply = Reply::Allowed;
 
-        int n;
+        ssize_t n;
         n = write(socketFD, &reply, sizeof(Reply));
         if (n < 0) {
             perror("Error writing to socket");
@@ -488,7 +484,6 @@ Reply Server::getFriendRequests(const int socketFD) {
 
             std::string line;
             std::string loginFrom, loginTo, isConfirmed;
-            Reply reply;
             while (getline(inFile, line)) {
                 std::stringstream lineStream(line);
                 std::getline(lineStream, loginFrom, ',');
@@ -502,7 +497,7 @@ Reply Server::getFriendRequests(const int socketFD) {
                     if (n < 0) {
                         perror("Error writing from socket");
                     }
-                    std::cout << "Login: " << user.login << std::endl;
+                    std::cout << "Friend login: " << user.login << std::endl;
 
                     n = read(socketFD, &reply, sizeof(Reply));
                     if (n < 0) {
@@ -534,6 +529,7 @@ Reply Server::getFriendRequests(const int socketFD) {
     pthread_mutex_lock(&this->friendListFileMutex);
     std::ifstream testInFile("FriendList.csv");
 
+    std::cout << "FriendList:" << std::endl;
     std::string testLine;
     while (getline(testInFile, testLine)) {
         std::cout << "* " << testLine << std::endl;
@@ -607,13 +603,13 @@ void Server::addNewUser(const userData &newUser) {
     std::ofstream outFile("Users.csv", std::ios::app);
 
     outFile << newUser.login << ',' << encryptPassword(newUser.password) << std::endl;
-    std::cout << "Login: " << newUser.login << " password: " << encryptPassword(newUser.password) << std::endl;
+    std::cout << "Login: " << newUser.login << std::endl;
 
     outFile.close();
     pthread_mutex_unlock(&this->usersFileMutex);
 }
 
-void Server::addNewIP(const std::string newIP, const std::string registeredLogin) {
+void Server::addNewIP(const std::string& newIP, const std::string& registeredLogin) {
     pthread_mutex_lock(&this->authorizedUsersFileMutex);
     std::ofstream outFile("AuthorizedUsers.csv", std::ios::app);
 
@@ -624,7 +620,7 @@ void Server::addNewIP(const std::string newIP, const std::string registeredLogin
     pthread_mutex_unlock(&this->authorizedUsersFileMutex);
 }
 
-void Server::deleteRegisteredUser(const std::string registeredLogin) {
+void Server::deleteRegisteredUser(const std::string& registeredLogin) {
     pthread_mutex_lock(&this->usersFileMutex);
     std::ifstream inFile("Users.csv");
     std::ofstream outFile("Users.csv.temp");
@@ -649,7 +645,7 @@ void Server::deleteRegisteredUser(const std::string registeredLogin) {
     pthread_mutex_unlock(&this->usersFileMutex);
 }
 
-void Server::deleteAuthorizedIP(const std::string authorizedIP) {
+void Server::deleteAuthorizedIP(const std::string& authorizedIP) {
     pthread_mutex_lock(&this->authorizedUsersFileMutex);
     std::ifstream inFile("AuthorizedUsers.csv");
     std::ofstream outFile("AuthorizedUsers.csv.temp");
@@ -675,12 +671,12 @@ void Server::deleteAuthorizedIP(const std::string authorizedIP) {
 }
 
 std::string Server::getIP(const int socketFD) {
-    struct sockaddr_in currentAddress;
+    sockaddr_in currentAddress = {0};
     socklen_t currentAddressLength = sizeof(currentAddress);
     getpeername(socketFD, (sockaddr *) &currentAddress, &currentAddressLength);
     char currentIP[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &(currentAddress.sin_addr), currentIP, INET_ADDRSTRLEN);
-    return std::string(currentIP);
+    return {currentIP};
 }
 
 std::string Server::getLoginByAuthorization(const int socketFD) {
@@ -691,7 +687,7 @@ std::string Server::getLoginByAuthorization(const int socketFD) {
 
     std::string line;
     std::string ip, login;
-    std::string currentLogin = "";
+    std::string currentLogin;
     while (getline(inFile, line)) {
         std::stringstream lineStream(line);
         std::getline(lineStream, ip, ',');
@@ -715,7 +711,7 @@ void Server::addNewMessage(const messageData &message) {
     pthread_mutex_unlock(&this->unreadMessagesListMutex);
 
     // zapisat do historie
-    pthread_mutex_lock(&this->historyMutex);
+    pthread_mutex_lock(&this->historyFileMutex);
 
     std::ofstream outFile("History.csv", std::ios_base::app);
     if (outFile.is_open()) {
@@ -723,10 +719,10 @@ void Server::addNewMessage(const messageData &message) {
     }
     outFile.close();
 
-    pthread_mutex_unlock(&this->historyMutex);
+    pthread_mutex_unlock(&this->historyFileMutex);
 }
 
-bool Server::checkFriend(const std::string currentLogin, const std::string friendLogin, const bool bilateralCheck,
+bool Server::checkFriend(const std::string& currentLogin, const std::string& friendLogin, const bool bilateralCheck,
                          const bool checkConfirmation) {
     pthread_mutex_lock(&this->friendListFileMutex);
     std::ifstream inFile("FriendList.csv");
@@ -757,18 +753,19 @@ bool Server::checkFriend(const std::string currentLogin, const std::string frien
 
     return isExisting;
 }
-void Server::addToFriendList(const std::string currentLogin, const std::string friendLogin, const int privateKey) {
+
+void Server::addToFriendList(const std::string& currentLogin, const std::string& friendLogin) {
     pthread_mutex_lock(&this->friendListFileMutex);
     std::ofstream outFile("FriendList.csv", std::ios::app);
 
-    outFile << currentLogin << ',' << friendLogin << ',' << privateKey << "," << "0" << std::endl;
-    std::cout << "Login: " << currentLogin << " friend login: " << friendLogin << std::endl;
+    outFile << currentLogin << ',' << friendLogin << ',' << '0' << std::endl;
+    std::cout << "Login: " << currentLogin << " add friend: " << friendLogin << std::endl;
 
     outFile.close();
     pthread_mutex_unlock(&this->friendListFileMutex);
 }
 
-void Server::deleteFromFriendList(const std::string currentLogin, const std::string friendLogin) {
+void Server::deleteFromFriendList(const std::string& currentLogin, const std::string& friendLogin) {
     pthread_mutex_lock(&this->friendListFileMutex);
     std::ifstream inFile("FriendList.csv");
     std::ofstream outFile("FriendList.csv.temp");
@@ -795,7 +792,7 @@ void Server::deleteFromFriendList(const std::string currentLogin, const std::str
     pthread_mutex_unlock(&this->friendListFileMutex);
 }
 
-int Server::getFriendRequestsNumber(const std::string login) {
+int Server::getFriendRequestsNumber(const std::string& login) {
     pthread_mutex_lock(&this->friendListFileMutex);
     std::ifstream inFile("FriendList.csv");
 
@@ -820,7 +817,6 @@ int Server::getFriendRequestsNumber(const std::string login) {
 }
 
 Reply Server::getHistory(const int socketFD) {
-
     std::string currentLogin;
     currentLogin = this->getLoginByAuthorization(socketFD);
     bool isAuthorized;
@@ -829,13 +825,13 @@ Reply Server::getHistory(const int socketFD) {
     if (isAuthorized) {
         reply = Reply::Allowed;
 
-        int n;
+        ssize_t n;
         n = write(socketFD, &reply, sizeof(Reply));
         if (n < 0) {
             perror("Error writing to socket");
         }
 
-        int* historyIndexes = getHistoryIndexes(currentLogin);
+        int *historyIndexes = getHistoryIndexes(currentLogin);
 
         std::cout << "History indexes number: " << historyIndexes[0] << std::endl;
         n = write(socketFD, &historyIndexes[0], sizeof(int));
@@ -844,12 +840,11 @@ Reply Server::getHistory(const int socketFD) {
         }
 
         if (historyIndexes[0] != 0) {
-            pthread_mutex_lock(&this->historyMutex);
+            pthread_mutex_lock(&this->historyFileMutex);
             std::ifstream inFile("History.csv");
 
             std::string line;
             std::string from, to, text;
-            Reply reply;
 
             int lineNumber = 0; // kde sa nachadzame
             int historyIndexIndex = 1; // index v historyIndexes  [a, b, c, ...]
@@ -858,8 +853,7 @@ Reply Server::getHistory(const int socketFD) {
 
             while (getline(inFile, line) && historyIndexIndex <= howManyLinesImLookingFor) {
 
-                if (lineNumber == lookingForLineNumber)
-                {
+                if (lineNumber == lookingForLineNumber) {
                     std::stringstream lineStream(line);
                     std::getline(lineStream, from, ',');
                     std::getline(lineStream, to, ',');
@@ -885,7 +879,7 @@ Reply Server::getHistory(const int socketFD) {
                 lineNumber++;
             }
             inFile.close();
-            pthread_mutex_unlock(&this->historyMutex);
+            pthread_mutex_unlock(&this->historyFileMutex);
         }
         reply = Reply::Success;
     } else {
@@ -893,26 +887,27 @@ Reply Server::getHistory(const int socketFD) {
     }
 
     //*
-    pthread_mutex_lock(&this->historyMutex);
+    pthread_mutex_lock(&this->historyFileMutex);
     std::ifstream testInFile("History.csv");
 
+    std::cout << "History:" << std::endl;
     std::string testLine;
     while (getline(testInFile, testLine)) {
         std::cout << "* " << testLine << std::endl;
     }
 
     testInFile.close();
-    pthread_mutex_unlock(&this->historyMutex);
+    pthread_mutex_unlock(&this->historyFileMutex);
     //*
 
     return reply;
 }
 
-int* Server::getHistoryIndexes(const std::string login) {
-    pthread_mutex_lock(&this->historyMutex);
+int *Server::getHistoryIndexes(const std::string& login) {
+    pthread_mutex_lock(&this->historyFileMutex);
     std::ifstream inFile("History.csv");
 
-    int* numberedLines = new int[1024];
+    int *numberedLines = new int[1024];
     int numberedLinesLen = 0;
     int lineIndex = 0;
 
@@ -932,53 +927,46 @@ int* Server::getHistoryIndexes(const std::string login) {
     }
 
     inFile.close();
-    pthread_mutex_unlock(&this->historyMutex);
+    pthread_mutex_unlock(&this->historyFileMutex);
 
-    int* ret = new int[1+numberedLinesLen];
+    int *ret = new int[1 + numberedLinesLen];
     ret[0] = numberedLinesLen;
     for (int i = 0; i < numberedLinesLen; i++) {
-        ret[i+1] = numberedLines[i];
+        ret[i + 1] = numberedLines[i];
     }
     delete[] numberedLines;
     numberedLines = nullptr;
 
-    std::cout<<"*i: ";
-    for (int i = 0; i < ret[0]+1; ++i) {
-        std::cout<<ret[i]<<" ";
-    }
-
-    std::cout<<std::endl;
     return ret;
 }
 
-std::string Server::encryptPassword(const std::string password){
+std::string Server::encryptPassword(const std::string& password) {
     std::string unencryptedPassword = "Dano";
     std::string encryptedPassword;
     unencryptedPassword += password;
-    unencryptedPassword  += "Drevo";
-    int messageLength = unencryptedPassword.length();
+    unencryptedPassword += "Drevo";
+    int messageLength = (int)unencryptedPassword.length();
     char temp;
 
     for (int j = 0; j < 80; ++j) {
         temp = unencryptedPassword[0];
-        for (int i = 0; i < messageLength-1; ++i) {
-            unencryptedPassword[i] = unencryptedPassword[i+1];
+        for (int i = 0; i < messageLength - 1; ++i) {
+            unencryptedPassword[i] = unencryptedPassword[i + 1];
         }
         unencryptedPassword[messageLength - 1] = temp;
     }
 
     for (int i = 0; i < messageLength; ++i) {
-        unencryptedPassword[i] = unencryptedPassword[i] % 74;
-        unencryptedPassword[i] += 128;
+        unencryptedPassword[i] = (char)(unencryptedPassword[i] % 74);
+        unencryptedPassword[i] += (char)128;
     }
-    for (int i = messageLength-1; i >= 0; --i) {
+    for (int i = messageLength - 1; i >= 0; --i) {
         encryptedPassword.push_back(unencryptedPassword[i]);
     }
     return encryptedPassword;
 }
 
 Reply Server::sendFile(const int socketFD) {
-    std::cout<<"in send file method"<<std::endl;
     std::string currentLogin;
     currentLogin = this->getLoginByAuthorization(socketFD);
     bool isAuthorized;
@@ -987,7 +975,7 @@ Reply Server::sendFile(const int socketFD) {
     if (isAuthorized) {
         reply = Reply::Allowed;
 
-        int n;
+        ssize_t n;
         n = write(socketFD, &reply, sizeof(Reply));
         if (n < 0) {
             perror("Error writing to socket");
@@ -1012,14 +1000,11 @@ Reply Server::sendFile(const int socketFD) {
             strncpy(fd.to, file.to, sizeof(fileData::to));
             strncpy(fd.name, file.name, sizeof(fileData::name));
             strncpy(fd.data, file.data, sizeof(fileData::data));
-            std::cout << "From: " << fd.from << " to: " << fd.to << " file: " << fd.name << std::endl;
+            std::cout << "From: " << fd.from << " to: " << fd.to << " file name: " << fd.name << std::endl;
             this->addNewFile(fd);
-            std::cout<<"yes"<<std::endl;
             reply = Reply::Success;
         } else if (isGroup) {
-            // tusom
-            if (checkUserInGroup(file.to, currentLogin))
-            {
+            if (checkUserInGroup(file.to, currentLogin)) {
                 fileData fd;
                 strncpy(fd.from, currentLogin.c_str(), currentLogin.size());
                 strncpy(fd.to, file.to, 24);
@@ -1041,7 +1026,6 @@ Reply Server::sendFile(const int socketFD) {
 }
 
 Reply Server::getNewFiles(const int socketFD) {
-    std::cout<<"in get new file method"<<std::endl;
     std::string currentLogin;
     currentLogin = this->getLoginByAuthorization(socketFD);
     bool isAuthorized;
@@ -1050,7 +1034,7 @@ Reply Server::getNewFiles(const int socketFD) {
     if (isAuthorized) {
         reply = Reply::Allowed;
 
-        int n;
+        ssize_t n;
         n = write(socketFD, &reply, sizeof(Reply));
         if (n < 0) {
             perror("Error writing to socket");
@@ -1058,14 +1042,14 @@ Reply Server::getNewFiles(const int socketFD) {
 
         int newFilesNumber = 0;
         pthread_mutex_lock(&this->unreadFilesListMutex);
-        for (auto it = this->unreadFiles.begin(); it != this->unreadFiles.end(); ++it) {
-            if (currentLogin == (*it).to) {
+        for (auto & unreadFile : this->unreadFiles) {
+            if (currentLogin == unreadFile.to) {
                 newFilesNumber++;
             }
         }
         pthread_mutex_unlock(&this->unreadFilesListMutex);
 
-        std::cout << "New messages number: " << newFilesNumber << std::endl;
+        std::cout << "New files number: " << newFilesNumber << std::endl;
         n = write(socketFD, &newFilesNumber, sizeof(int));
         if (n < 0) {
             perror("Error writing to socket");
@@ -1076,7 +1060,8 @@ Reply Server::getNewFiles(const int socketFD) {
 
             for (auto it = this->unreadFiles.begin(); it != this->unreadFiles.end();) {
                 if (currentLogin == (*it).to) {
-                    std::cout << "From: " << (*it).from << " to: " << (*it).to << " filename: " << (*it).name << std::endl;
+                    std::cout << "From: " << (*it).from << " to: " << (*it).to << " file name: " << (*it).name
+                              << std::endl;
                     n = write(socketFD, &(*it), sizeof(fileData));
                     if (n < 0) {
                         perror("Error writing to socket");
@@ -1104,16 +1089,16 @@ void Server::addNewFile(const fileData &file) {
     pthread_mutex_unlock(&this->unreadFilesListMutex);
 }
 
-void Server::addNewFileGroup(const fileData &file, std::string group, std::string login) {
+void Server::addNewFileGroup(const fileData &file, const std::string& group, const std::string& login) {
     pthread_mutex_lock(&this->unreadFilesListMutex);
     std::list<std::string> recipients;
     recipients = getGroupNames(group, login);
 
-    for (auto it = recipients.begin(); it != recipients.end(); ++it) {
-        strcpy((char*)file.from, group.c_str()); //TOTO URCUJE, CI ODOSIELATEL JE MENOVITY ALEBO SKUPINA
-        strcpy((char*)file.to, (*it).c_str());
+    for (auto & recipient : recipients) {
+        strcpy((char *) file.from, group.c_str()); //TOTO URCUJE, CI ODOSIELATEL JE MENOVITY ALEBO SKUPINA
+        strcpy((char *) file.to, recipient.c_str());
         this->unreadFiles.push_back(file);
-        std::cout<<"From: "<<file.from << " To: " << file.to << " File: " << file.name<<std::endl;
+        std::cout << "From: " << file.from << " to: " << file.to << " file name: " << file.name << std::endl;
     }
 
     pthread_mutex_unlock(&this->unreadFilesListMutex);
@@ -1128,7 +1113,7 @@ Reply Server::createGroup(const int socketFD) {
     if (isAuthorized) {
         reply = Reply::Allowed;
 
-        int n;
+        ssize_t n;
         n = write(socketFD, &reply, sizeof(Reply));
         if (n < 0) {
             perror("Error writing to socket");
@@ -1156,12 +1141,9 @@ Reply Server::createGroup(const int socketFD) {
     return reply;
 }
 
-bool Server::checkGroup(const std::string groupName) {
-    pthread_mutex_lock(&this->groupDataMutex);
-    std::ifstream inFile("Group.csv");
-
-    // skupina1, matej, adam, fero,
-    // skupina2, jozo,
+bool Server::checkGroup(const std::string& groupName) {
+    pthread_mutex_lock(&this->groupsFileMutex);
+    std::ifstream inFile("Groups.csv");
 
     std::string line;
     std::string name;
@@ -1170,41 +1152,39 @@ bool Server::checkGroup(const std::string groupName) {
         std::stringstream lineStream(line);
         std::getline(lineStream, name, ',');
 
-        if (name == groupName)
-        {
+        if (name == groupName) {
             isExisting = true;
             break;
         }
     }
     inFile.close();
-    pthread_mutex_unlock(&this->groupDataMutex);
+    pthread_mutex_unlock(&this->groupsFileMutex);
 
     return isExisting;
 }
 
-void Server::addNewGroup(const std::string groupName) {
-    pthread_mutex_lock(&this->groupDataMutex);
-//    std::ofstream outFile("Group.csv");
-    std::ofstream outFile("Group.csv", std::ios::app);
+void Server::addNewGroup(const std::string& groupName) {
+    pthread_mutex_lock(&this->groupsFileMutex);
+    std::ofstream outFile("Groups.csv", std::ios::app);
 
     outFile << groupName << std::endl;
-    std::cout << "groupname : " << groupName << " added"<< std::endl;
+    std::cout << "Group name: " << groupName << " added" << std::endl;
 
     outFile.close();
-    pthread_mutex_unlock(&this->groupDataMutex);
+    pthread_mutex_unlock(&this->groupsFileMutex);
 
+    //*
+    pthread_mutex_lock(&this->groupsFileMutex);
+    std::ifstream testInFile("Groups.csv");
 
-    //* pomocny vypis
-    pthread_mutex_lock(&this->groupDataMutex);
-    std::ifstream testInFile("Group.csv");
+    std::cout << "Group:" << std::endl;
     std::string testLine;
     while (getline(testInFile, testLine)) {
         std::cout << "* " << testLine << std::endl;
     }
     testInFile.close();
-    pthread_mutex_unlock(&this->groupDataMutex);
-    //* pomocny vypis
-
+    pthread_mutex_unlock(&this->groupsFileMutex);
+    //*
 }
 
 Reply Server::addUserToGroup(const int socketFD) {
@@ -1216,7 +1196,7 @@ Reply Server::addUserToGroup(const int socketFD) {
     if (isAuthorized) {
         reply = Reply::Allowed;
 
-        int n;
+        ssize_t n;
         n = write(socketFD, &reply, sizeof(Reply));
         if (n < 0) {
             perror("Error writing to socket");
@@ -1232,14 +1212,13 @@ Reply Server::addUserToGroup(const int socketFD) {
         isExisting = checkGroup(gd.name);
 
         if (isExisting) {
-            pthread_mutex_lock(&this->groupDataMutex);
-            std::ifstream inFile("Group.csv");
-            std::ofstream outFile("Group.csv.temp");
+            pthread_mutex_lock(&this->groupsFileMutex);
+            std::ifstream inFile("Groups.csv");
+            std::ofstream outFile("Groups.csv.temp");
 
             std::string line;
             std::string name;
             bool alreadyAdded = false;
-            Reply reply;
             reply = Reply::Failure;
             while (getline(inFile, line)) {
                 std::stringstream lineStream(line);
@@ -1259,9 +1238,9 @@ Reply Server::addUserToGroup(const int socketFD) {
             inFile.close();
             outFile.close();
 
-            remove("Group.csv");
-            rename("Group.csv.temp", "Group.csv");
-            pthread_mutex_unlock(&this->groupDataMutex);
+            remove("Groups.csv");
+            rename("Groups.csv.temp", "Groups.csv");
+            pthread_mutex_unlock(&this->groupsFileMutex);
         } else {
             reply = Reply::Failure;
         }
@@ -1269,28 +1248,30 @@ Reply Server::addUserToGroup(const int socketFD) {
     } else {
         reply = Reply::Denied;
     }
-    //*
-    pthread_mutex_lock(&this->groupDataMutex);
-    std::ifstream testInFile("Group.csv");
 
+    //*
+    pthread_mutex_lock(&this->groupsFileMutex);
+    std::ifstream testInFile("Groups.csv");
+
+    std::cout << "Group:" << std::endl;
     std::string testLine;
     while (getline(testInFile, testLine)) {
         std::cout << "* " << testLine << std::endl;
     }
 
     testInFile.close();
-    pthread_mutex_unlock(&this->groupDataMutex);
+    pthread_mutex_unlock(&this->groupsFileMutex);
     //*
 
     return reply;
 }
 
-bool Server::checkUserInGroup(const std::string group, const std::string login) {
+bool Server::checkUserInGroup(const std::string& group, const std::string& login) {
     bool isExisting = false;
     bool end = false;
 
-    pthread_mutex_lock(&this->groupDataMutex);
-    std::ifstream inFile("Group.csv");
+    pthread_mutex_lock(&this->groupsFileMutex);
+    std::ifstream inFile("Groups.csv");
 
     std::string line;
     std::string groupName;
@@ -1312,45 +1293,32 @@ bool Server::checkUserInGroup(const std::string group, const std::string login) 
     }
 
     inFile.close();
-    pthread_mutex_unlock(&this->groupDataMutex);
+    pthread_mutex_unlock(&this->groupsFileMutex);
 
     return isExisting;
 }
 
-void Server::addNewMessageGroup(messageData fullMessage, const std::string group, std::string login) {
+void Server::addNewMessageGroup(messageData fullMessage, const std::string& group, const std::string& login) {
     pthread_mutex_lock(&this->unreadMessagesListMutex);
     std::list<std::string> recipients;
     recipients = getGroupNames(group, login);
 
-    for (auto it = recipients.begin(); it != recipients.end(); ++it) {
+    for (auto & recipient : recipients) {
         strcpy(fullMessage.from, group.c_str()); //TOTO URCUJE, CI ODOSIELATEL JE MENOVITY ALEBO SKUPINA
-        strcpy(fullMessage.to, (*it).c_str());
+        strcpy(fullMessage.to, recipient.c_str());
         this->unreadMessages.push_back(fullMessage);
-        std::cout<<"From: "<<fullMessage.from << " To: " << fullMessage.to << " Text: " << fullMessage.text<<std::endl;
+        std::cout << "From: " << fullMessage.from << " to: " << fullMessage.to << " text: " << fullMessage.text
+                  << std::endl;
     }
 
     pthread_mutex_unlock(&this->unreadMessagesListMutex);
 }
 
-std::list<std::string> Server::getGroupNames(const std::string group, std::string login) {
-    //* pomocny vypis
-    pthread_mutex_lock(&this->groupDataMutex);
-    std::ifstream testInFile("Group.csv");
-    std::string testLine;
-    while (getline(testInFile, testLine)) {
-        std::cout << "* " << testLine << std::endl;
-    }
-    testInFile.close();
-    pthread_mutex_unlock(&this->groupDataMutex);
-    //* pomocny vypis
-
-
-
-
+std::list<std::string> Server::getGroupNames(const std::string& group, const std::string& login) {
     std::list<std::string> groupNames;
 
-    pthread_mutex_lock(&this->groupDataMutex);
-    std::ifstream inFile("Group.csv");
+    pthread_mutex_lock(&this->groupsFileMutex);
+    std::ifstream inFile("Groups.csv");
 
     std::string line;
     std::string groupName;
@@ -1362,148 +1330,27 @@ std::list<std::string> Server::getGroupNames(const std::string group, std::strin
             while (std::getline(lineStream, userName, ',')) {
                 if (userName != login) {
                     groupNames.push_back(userName);
-                    std::cout<<"---pushing---"<<std::endl;
                 }
             }
         }
     }
 
     inFile.close();
-    pthread_mutex_unlock(&this->groupDataMutex);
+    pthread_mutex_unlock(&this->groupsFileMutex);
+
+    //*
+    pthread_mutex_lock(&this->groupsFileMutex);
+    std::ifstream testInFile("Groups.csv");
+
+    std::cout << "Group:" << std::endl;
+    std::string testLine;
+    while (getline(testInFile, testLine)) {
+        std::cout << "* " << testLine << std::endl;
+    }
+
+    testInFile.close();
+    pthread_mutex_unlock(&this->groupsFileMutex);
+    //*
 
     return groupNames;
-}
-
-
-
-// * Sha-Vycuc encryption NWP.
-//std::string Server::encryptPassword(const std::string password){
-//    std::string unencryptedPassword = password;
-//    std::string encryptedPassword;
-//    int ft;
-//    int kt;
-//    int temp;
-//
-//    //Padding
-//    int messageLength = sizeof(unencryptedPassword);
-//    unencryptedPassword += 0x80;
-//    unencryptedPassword += 0x200;
-//    unencryptedPassword = unencryptedPassword % 0x200;
-//    int padding = (32 - messageLength);
-//    std::bitset<32> message;
-//    std::bitset message = std::bitset<32>(unencryptedPassword);
-//
-//    message<<=1;
-//    message&=0x01;
-//    for (int i = 0; i < padding-1; ++i) {
-//        message<<=1;
-//    }
-//    int w[80];
-//    for (int i = 0; i < 16; ++i) {
-//        std::bitset<32>(message)>>w[i];
-//    }
-//
-//    //Compresia
-//    int h[5] = {0x19283764,0x1DCBEF69,0x360A9C26,0x420B4E2A,0x6A2C64DF};
-//    // h0 = 0x19283764 = a0
-//    // h1 = 0x1DCBEF69 = b0
-//    // h2 = 0x360A9C26 = c0
-//    // h3 = 0x420B4E2A = d0
-//    // h4 = 0x6A2C64DF = e0
-//
-//    int a = h[0];
-//    int b = h[1];
-//    int c = h[2];
-//    int d = h[3];
-//    int e = h[4];
-//
-//    // Padding w[i] zo 16 na 80
-//    for (int i = 16; i < 80; ++i) {
-//        w[i] = (w[i-3] ^ w[i-8] ^ w[i-14] ^ w[i-16]);
-//        // Leftrotate 1
-//        w[i] = temp;
-//        for (int j = 0; j < i; ++j) {
-//            w[j+1] = w[j];
-//        }
-//        w[0] = temp;
-//    }
-//
-//    for (int i = 0; i < 80; ++i) {
-//        if (0 <= i && i <= 19) {        // Prva faza
-//            ft = (b and c) or ((not b) and d);
-//            kt = 0x5A827999;
-//        }
-//        else if (20 <= i && i <= 39) {  // Druha faza
-//            ft = b xor c xor d;
-//            kt = 0x6ED9EBA1;
-//        }
-//        else if (40 <= i && i <= 59) {  // Tretia faza
-//            ft = (b and c) or (b and d) or (c and d);
-//            kt = 0x8F1BBCDC;
-//        }
-//        else if (60 <= i && i <= 79) {  // Stvrta faza
-//            ft = b xor c xor d;
-//            kt = 0xCA62C1D6;
-//        }
-//
-//        temp = (a*2^5) + ft + e + ft + w[i];
-//        e = d;
-//        d = c;
-//        c = b;
-//        b = a;
-//        a = temp;
-//
-//        h[0] = h[0] + a;
-//        h[1] = h[1] + b;
-//        h[2] = h[2] + c;
-//        h[3] = h[3] + d;
-//        h[4] = h[4] + e;
-//    }
-//    std::stringstream ss;
-//    ss << ((h[0]*2^128) + (h[1]*2^96) + (h[2]*2^64) + (h[3]*2^32) + h[4]);
-//    ss >> encryptedPassword;
-//    return encryptedPassword;
-//}
-//*/
-//>>>>>>> origin/master
-
-
-Reply Server::sendPublicKey(const int socketFD) {
-    std::string currentLogin;
-    currentLogin = this->getLoginByAuthorization(socketFD);
-    bool isAuthorized;
-    isAuthorized = !currentLogin.empty();
-    Reply reply;
-    if (isAuthorized) {
-        reply = Reply::Allowed;
-        long long PublicP = P;
-        int n;
-        n = read(socketFD, &PublicP, sizeof(long long));
-        if (n < 0) {
-            perror("Error writing to socket");
-        }
-
-        n = write(socketFD, &reply, sizeof(Reply));
-        if (n < 0) {
-            perror("Error reading from socket");
-        }
-        if (reply == Reply::Agree){
-            int PublicG = G;
-            n = read(socketFD, &PublicG, sizeof(int));
-            if (n < 0) {
-                perror("Error writing to socket");
-            }
-
-            n = write(socketFD, &reply, sizeof(Reply));
-            if (n < 0) {
-                perror("Error reading from socket");
-            }
-            if (reply == Reply::Success){
-                return reply;
-            }
-        }
-    } else {
-        return Reply::Denied;
-    }
-    return Reply::Failure;
 }
