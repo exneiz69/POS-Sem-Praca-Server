@@ -29,6 +29,7 @@ void *threadMain(void *pData) {
             endOfCommunication = true;
         } else {
             Reply reply;
+            bool isValidReply = true;
             switch (action) {
                 case Action::RegisterAccount:
                     reply = Server::getInstance().registerNewUser(*newSocketFD);
@@ -85,12 +86,15 @@ void *threadMain(void *pData) {
                     reply = Server::getInstance().addUserToGroup(*newSocketFD);
                     break;
                 default:
+                    isValidReply = false;
                     break;
             }
-
-            n = write(*newSocketFD, &reply, sizeof(Reply));
-            if (n < 0) {
-                perror("Error writing to socket");
+            if (isValidReply)
+            {
+                n = write(*newSocketFD, &reply, sizeof(Reply));
+                if (n < 0) {
+                    perror("Error writing to socket");
+                }
             }
         }
     }
@@ -104,6 +108,12 @@ void *threadMain(void *pData) {
 }
 
 int main(int argc, char *argv[]) {
+    remove("FriendList.csv");
+    remove("AuthorizedUsers.csv");
+    remove("Users.csv");
+    remove("History.csv");
+    remove("Groups.csv");
+
     int socketFD;
     int newSocketFD;
     socklen_t clientAddressLength;

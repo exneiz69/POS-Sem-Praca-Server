@@ -82,7 +82,7 @@ private:
 
     long long P = 4745186671;
 
-    long long G = 17;
+    long long G = 0;
 
     Server();
 
@@ -132,13 +132,17 @@ private:
 
     void addNewGroup(const std::string& groupName);
 
-    bool checkUserInGroup(const std::string& group, const std::string& login);
+    bool checkUserInGroupLine(const std::string& groupData, const std::string& login);
+
+    bool checkUserInGroup(const std::string& groupName, const std::string& login);
 
     void addNewMessageGroup(messageData fullMessage, const std::string& group, const std::string& login);
 
     std::list<std::string> getGroupNames(const std::string& group, const std::string& login);
 
     void addNewFileGroup(const fileData &file, const std::string& group, const std::string& login);
+
+
 
 public:
     Server(Server const &) = delete;
