@@ -11,7 +11,6 @@
 #include <cstring>
 #include <iostream>
 
-
 void *threadMain(void *pData) {
     int *newSocketFD = (int *) pData;
     std::cout << "start socket " << *newSocketFD << " in thread" << std::endl;
@@ -78,6 +77,12 @@ void *threadMain(void *pData) {
                     break;
                 case Action::BuildSymmetricConnection:
                     reply = Server::getInstance().buildSymmetricConnection(*newSocketFD);
+                    break;
+                case Action::CreateGroup:
+                    reply = Server::getInstance().createGroup(*newSocketFD);
+                    break;
+                case Action::AddUserToGroup:
+                    reply = Server::getInstance().addUserToGroup(*newSocketFD);
                     break;
                 default:
                     break;
