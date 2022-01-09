@@ -6,7 +6,7 @@ enum class Reply {
 };
 
 enum class Action {
-    RegisterAccount = 0x0400, DeleteAccount, Login, Logout, SendMessage, GetNewMessages, AddFriend, RemoveFriend, GetFriendRequests, GetHistory, SendFile, GetNewFiles, SendPublicKey, BuildSymmetricConnection
+    RegisterAccount = 0x0400, DeleteAccount, Login, Logout, SendMessage, SendEncryptedMessage, GetNewMessages, GetEncryptedMessages, AddFriend, RemoveFriend, GetFriendRequests, GetHistory, SendFile, GetNewFiles, SendPublicKey, BuildSymmetricConnection
 };
 
 struct userData {
@@ -24,10 +24,6 @@ struct messageData {
 struct messageReducedData {
     char to[24] = {0};
     char text[256] = {0};
-};
-
-struct encryptedData {
-    char text[280] = {0};
 };
 
 struct fileData

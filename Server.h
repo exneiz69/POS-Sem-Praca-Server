@@ -25,6 +25,8 @@ public:
 
     Reply getMessage(const int socketFD);
 
+    Reply getEncryptedMessage(const int socketFD);
+
     Reply sendNewMessages(const int socketFD);
 
     Reply addFriend(const int socketFD);
@@ -43,6 +45,7 @@ public:
 
     Reply buildSymmetricConnection(const int socketFD);
   
+    Reply sendNewEncryptedMessages(const int socketFD);
 
 private:
     pthread_mutex_t usersFileMutex;
@@ -58,6 +61,8 @@ private:
     pthread_mutex_t unreadFilesListMutex;
 
     std::list<messageData> unreadMessages;
+
+    std::list<messageData> unreadEncryptedMessages;
 
     std::list<fileData> unreadFiles;
 
@@ -89,6 +94,8 @@ private:
 
     void addNewMessage(const messageData &message);
 
+    void addNewEncryptedMessage(const messageData &message);
+
     void addNewFile(const fileData &file);
 
     bool checkFriend(const std::string currentLogin, const std::string friendLogin, const bool bilateralCheck = false, const bool checkConfirmation = false);
@@ -102,11 +109,6 @@ private:
     int* getHistoryIndexes(const std::string login);
 
     std::string encryptPassword(std::string password);
-
-    std::string encryptMessage(const int socketFD, std::string UnencryptedMessage);
-
-    std::string decryptMessage(const int socketFD, std::string EncryptedMessage);
-
 
     long long diffieHelmanStepOne(long long Prime);
 

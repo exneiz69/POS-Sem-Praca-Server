@@ -1253,7 +1253,7 @@ Reply Server::buildSymmetricConnection(const int socketFD){
             }
 //            std::cout << "Do klienta odislo  " << privateKeyComponentServer << std::endl;
             long long tempKey = diffieHelmanStepTwo(privateKeyComponentClient, privateKeyBase);
-            this->privateKeyMap.insert(std::pair<std::string, long long>(getLoginByAuthorization(socketFD), tempKey));
+            this->privateKeyMap[getLoginByAuthorization(socketFD)] = tempKey;
 //            std::cout << "Success, Private key je vytvoreny. private key = " << tempKey << std::endl;
             reply = Reply::Success;
         } else {
@@ -1293,10 +1293,6 @@ long long Server::getG(){
     return temp;
 }
 
-std::string Server::decryptMessage(std::string EncryptedMessage) {
-    return nullptr;
-}
-
 long long Server::primeNumberGenerator() {
     long long randomBeginning = ((rand()%20000)+ 20000) - (rand()%10000);
     long long primeNum = randomBeginning;
@@ -1318,18 +1314,141 @@ long long Server::primeNumberGenerator() {
     return primeNum;
 }
 
-std::string Server::encryptMessage(const int socketFD, std::string UnencryptedMessage) {
-    std::string encryptedMessage = UnencryptedMessage;
-    for (int i = 0; i < sizeof(UnencryptedMessage); ++i) {
-        encryptedMessage[i] += this->privateKeyMap(getLoginByAuthorization(socketFD));
+Reply Server::getEncryptedMessage(const int socketFD) {
+    std::string currentLogin;
+    currentLogin = this->getLoginByAuthorization(socketFD);
+    bool isAuthorized;
+    isAuthorized = !currentLogin.empty();
+    Reply reply;
+    if (isAuthorized) {
+        reply = Reply::Allowed;
+
+        int n;
+        n = write(socketFD, &reply, sizeof(Reply));
+        if (n < 0) {
+            perror("Error writing to socket");
+        }
+        messageData decryptedMessage;
+        messageReducedData encryptedMessage;
+        n = read(socketFD, &encryptedMessage, sizeof(messageReducedData));
+        if (n < 0) {
+            perror("Error reading from socket");
+        }
+        userData user;
+        strncpy(user.login, decryptedMessage.to, 24);
+        bool isExisting;
+        isExisting = this->checkRegisteredUser(user);
+        if (isExisting) {
+                messageData fullMessage;
+                strncpy(fullMessage.from, currentLogin.c_str(), currentLogin.size());
+                strncpy(fullMessage.to, decryptedMessage.to, 24);
+                strncpy(fullMessage.text, decryptedMessage.text, 256);
+
+                auto it = this->privateKeyMap.find(getLoginByAuthorization(socketFD));
+                long long tempKey = it->second;
+                decryptedMessage = fullMessage;
+                for (int i = 0; i < sizeof(decryptedMessage.from); ++i) {
+                    decryptedMessage.from[i] = (fullMessage.from[i] - (tempKey% 74));
+                }
+                for (int i = 0; i < sizeof(decryptedMessage.to); ++i) {
+                    decryptedMessage.to[i] = (fullMessage.to[i] - (tempKey% 74));
+                }
+                if (this->checkFriend(user.login, decryptedMessage.to)) {
+                for (int i = 0; i < sizeof(decryptedMessage.text); ++i) {
+                    decryptedMessage.text[i] = (fullMessage.text[i] - (tempKey% 74));
+                }
+
+                this->addNewEncryptedMessage(decryptedMessage);
+                reply = Reply::Success;
+            } else {
+                reply = Reply::Failure;
+            }
+        } else{
+            reply = Reply::Disagree;
+        }
+    } else {
+        reply = Reply::Denied;
+
     }
-    return encryptedMessage;
+
+    return reply;
 }
 
-std::string Server::decryptMessage(const int socketFD, std::string EncryptedMessage) {
-    std::string unencryptedMessage = EncryptedMessage;
-    for (int i = 0; i < sizeof(EncryptedMessage); ++i) {
-        unencryptedMessage[i] -= this->privateKeyMap(getLoginByAuthorization(socketFD));
-    }
-    return unencryptedMessage;
+void Server::addNewEncryptedMessage(const messageData &message) {
+    pthread_mutex_lock(&this->unreadMessagesListMutex);
+    this->unreadEncryptedMessages.push_back(message);
+    pthread_mutex_unlock(&this->unreadMessagesListMutex);
+    std::cout<< "Uspesne pridana nova encrypted sprava na neskorsie zpracovanie." << std::endl;
+}
+
+    Reply Server::sendNewEncryptedMessages(const int socketFD){
+        std::string currentLogin;
+        currentLogin = this->getLoginByAuthorization(socketFD);
+        bool isAuthorized;
+        isAuthorized = !currentLogin.empty();
+        Reply reply;
+        if (isAuthorized) {
+            reply = Reply::Allowed;
+
+            int n;
+            n = write(socketFD, &reply, sizeof(Reply));
+            if (n < 0) {
+                perror("Error writing to socket");
+            }
+
+            int newMessagesNumber = 0;
+            pthread_mutex_lock(&this->unreadMessagesListMutex);
+            for (auto it = this->unreadEncryptedMessages.begin(); it != this->unreadEncryptedMessages.end(); ++it) {
+                if (currentLogin == (*it).to) {
+                    newMessagesNumber++;
+                }
+            }
+            pthread_mutex_unlock(&this->unreadMessagesListMutex);
+
+            std::cout << "You have received " << newMessagesNumber<< " new encrypted messages. " << std::endl;
+            n = write(socketFD, &newMessagesNumber, sizeof(int));
+            if (n < 0) {
+                perror("Error writing to socket");
+            }
+
+            if (newMessagesNumber != 0) {
+                pthread_mutex_lock(&this->unreadMessagesListMutex);
+                messageData decryptedMessage;
+                messageData encryptedMessage;
+
+                auto it = this->privateKeyMap.find(currentLogin);
+                long long tempKey = it->second;
+
+                for (auto it = this->unreadEncryptedMessages.begin(); it != this->unreadEncryptedMessages.end();) {
+                    if (currentLogin == (*it).to) {
+                        decryptedMessage = (*it);
+                        encryptedMessage = (*it);
+
+                        std::cout << "Decrypted message: From: " << decryptedMessage.from << " to: " << decryptedMessage.to << " text: " << decryptedMessage.text << std::endl;
+                        for (int i = 0; i < sizeof(decryptedMessage.from); ++i) {
+                            encryptedMessage.from[i] = (decryptedMessage.to[i] + (tempKey% 74));
+                        }
+                        for (int i = 0; i < sizeof(decryptedMessage.to); ++i) {
+                            encryptedMessage.to[i] = (decryptedMessage.to[i] + (tempKey% 74));
+                        }
+                        for (int i = 0; i < sizeof(decryptedMessage.text); ++i) {
+                            encryptedMessage.text[i] = (decryptedMessage.to[i] + (tempKey% 74));
+                        }
+                        std::cout << "Encrypted message: From: " << encryptedMessage.from << " to: " << encryptedMessage.to << " text: " << encryptedMessage.text << std::endl;
+                        n = write(socketFD, &(*it), sizeof(messageData));
+                        if (n < 0) {
+                            perror("Error writing to socket");
+                        }
+                        it = this->unreadEncryptedMessages.erase(it);
+                    } else {
+                        ++it;
+                    }
+                }
+                pthread_mutex_unlock(&this->unreadMessagesListMutex);
+            }
+            reply = Reply::Success;
+        } else {
+            reply = Reply::Denied;
+        }
+        return reply;
 }
