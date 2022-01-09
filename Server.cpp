@@ -21,6 +21,7 @@ Server::Server() {
     this->historyFileMutex = PTHREAD_MUTEX_INITIALIZER;
     this->unreadFilesListMutex = PTHREAD_MUTEX_INITIALIZER;
     this->groupsFileMutex = PTHREAD_MUTEX_INITIALIZER;
+    this->G = primeNumberGenerator();
 }
 
 Server::~Server() {

@@ -82,7 +82,7 @@ private:
 
     long long P = 4745186671;
 
-    long long G = 17;
+    long long G = 0;
 
     Server();
 
