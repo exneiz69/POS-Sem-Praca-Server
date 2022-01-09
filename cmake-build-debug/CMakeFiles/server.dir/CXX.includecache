@@ -29,6 +29,8 @@ sstream
 -
 cstring
 -
+stdlib.h
+-
 
 /tmp/tmp.lPuRSoB3AE/Server.h
 data.h
@@ -39,6 +41,30 @@ list
 -
 string
 -
+map
+-
 
 /tmp/tmp.lPuRSoB3AE/data.h
+
+/tmp/tmp.lPuRSoB3AE/main.cpp
+data.h
+/tmp/tmp.lPuRSoB3AE/data.h
+Server.h
+/tmp/tmp.lPuRSoB3AE/Server.h
+sys/socket.h
+-
+netinet/in.h
+-
+unistd.h
+-
+pthread.h
+-
+cstdio
+-
+cstdlib
+-
+cstring
+-
+iostream
+-
 

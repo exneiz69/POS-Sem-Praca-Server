@@ -6,14 +6,13 @@ enum class Reply {
 };
 
 enum class Action {
-    RegisterAccount = 0x0400, DeleteAccount, Login, Logout, SendMessage, SendEncryptedMessage, GetNewMessages, GetEncryptedMessages, AddFriend, RemoveFriend, GetFriendRequests, GetHistory, SendFile, GetNewFiles, SendPublicKey, BuildSymmetricConnection
+    RegisterAccount = 0x0400, DeleteAccount, Login, Logout, SendMessage, GetNewMessages, AddFriend, RemoveFriend, GetFriendRequests, GetHistory, SendFile, GetNewFiles, CreateGroup, SendEncryptedMessage, GetEncryptedMessages, SendPublicKey, BuildSymmetricConnection
 };
 
 struct userData {
     char login[24] = {0};
     char password[72] = {0};
 };
-
 
 struct messageData {
     char from[24] = {0};

@@ -156,7 +156,7 @@ CMAKE_PROJECT_DESCRIPTION:STATIC=
 CMAKE_PROJECT_HOMEPAGE_URL:STATIC=
 
 //Value Computed by CMake
-CMAKE_PROJECT_NAME:STATIC=server
+CMAKE_PROJECT_NAME:STATIC=Server
 
 //Path to a program.
 CMAKE_RANLIB:FILEPATH=/usr/bin/ranlib
@@ -225,6 +225,12 @@ ProcessorCount_cmd_nproc:FILEPATH=/usr/bin/nproc
 
 //Path to a program.
 ProcessorCount_cmd_sysctl:FILEPATH=/sbin/sysctl
+
+//Value Computed by CMake
+Server_BINARY_DIR:STATIC=/tmp/tmp.lPuRSoB3AE/cmake-build-debug
+
+//Value Computed by CMake
+Server_SOURCE_DIR:STATIC=/tmp/tmp.lPuRSoB3AE
 
 //Value Computed by CMake
 server_BINARY_DIR:STATIC=/tmp/tmp.lPuRSoB3AE/cmake-build-debug
