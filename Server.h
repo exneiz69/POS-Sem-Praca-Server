@@ -25,9 +25,15 @@ public:
 
     Reply getMessage(int socketFD);
 
+    Reply sendNewMessages(int socketFD);
+
     Reply getEncryptedMessage(int socketFD);
 
-    Reply sendNewMessages(int socketFD);
+    Reply sendNewEncryptedMessages(int socketFD);
+
+    Reply sendPublicKey(int socketFD);
+
+    Reply buildSymmetricConnection(int socketFD);
 
     Reply addFriend(int socketFD);
 
@@ -41,15 +47,13 @@ public:
 
     Reply getNewFiles(int socketFD);
 
-    Reply sendPublicKey(int socketFD);
-
-    Reply buildSymmetricConnection(int socketFD);
-
     Reply createGroup(int socketFD);
 
-    Reply sendNewEncryptedMessages(int socketFD);
-
     Reply addUserToGroup(int socketFD);
+
+    long long getG();
+
+    long long getP();
 
 private:
     pthread_mutex_t usersFileMutex{};
@@ -57,6 +61,8 @@ private:
     pthread_mutex_t authorizedUsersFileMutex{};
 
     pthread_mutex_t unreadMessagesListMutex{};
+
+    pthread_mutex_t unreadEncryptedMessagesListMutex{};
 
     pthread_mutex_t friendListFileMutex{};
 
@@ -74,10 +80,9 @@ private:
 
     std::map<std::string,long long> privateKeyMap;
 
-// Prime public key values
     long long P = 4745186671;
-    long long G = 17;
 
+    long long G = 17;
 
     Server();
 
@@ -117,13 +122,11 @@ private:
 
     std::string encryptPassword(const std::string& password);
 
-    long long diffieHelmanStepOne(long long Prime);
+    long long diffieHelmanStepOne(long long prime);
 
     long long diffieHelmanStepTwo(long long privateKeyComponentClient, long long privateKeyBase);
 
     long long primeNumberGenerator();
-
-    bool checkGroup(const std::string groupName);
 
     bool checkGroup(const std::string& groupName);
 
@@ -136,11 +139,8 @@ private:
     std::list<std::string> getGroupNames(const std::string& group, const std::string& login);
 
     void addNewFileGroup(const fileData &file, const std::string& group, const std::string& login);
+
 public:
-    long long getG();
-
-    long long getP();
-
     Server(Server const &) = delete;
 
     void operator=(Server const &) = delete;

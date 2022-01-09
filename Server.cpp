@@ -11,16 +11,12 @@
 #include <fstream>
 #include <sstream>
 #include <cstring>
-#include <stdlib.h>
-
-// Prime public key values
-long long P = 4745186671; // Horna modularna hranica Diffie-Hellmanovho algoritmu
-int G = 17; // Mocneny zaklad Diffie-Hellmanovho algoritmu
 
 Server::Server() {
     this->usersFileMutex = PTHREAD_MUTEX_INITIALIZER;
     this->authorizedUsersFileMutex = PTHREAD_MUTEX_INITIALIZER;
     this->unreadMessagesListMutex = PTHREAD_MUTEX_INITIALIZER;
+    this->unreadEncryptedMessagesListMutex = PTHREAD_MUTEX_INITIALIZER;
     this->friendListFileMutex = PTHREAD_MUTEX_INITIALIZER;
     this->historyFileMutex = PTHREAD_MUTEX_INITIALIZER;
     this->unreadFilesListMutex = PTHREAD_MUTEX_INITIALIZER;
@@ -31,6 +27,7 @@ Server::~Server() {
     pthread_mutex_destroy(&this->usersFileMutex);
     pthread_mutex_destroy(&this->authorizedUsersFileMutex);
     pthread_mutex_destroy(&this->unreadMessagesListMutex);
+    pthread_mutex_destroy(&this->unreadEncryptedMessagesListMutex);
     pthread_mutex_destroy(&this->friendListFileMutex);
     pthread_mutex_destroy(&this->historyFileMutex);
     pthread_mutex_destroy(&this->unreadFilesListMutex);
@@ -206,7 +203,6 @@ Reply Server::deauthorizeUser(const int socketFD) {
 
         if (reply == Reply::Agree) {
             this->deleteAuthorizedIP(this->getIP(socketFD));
-            this->privateKeyMap.erase(getLoginByAuthorization(socketFD));
         }
 
         reply = Reply::Success;
@@ -336,9 +332,233 @@ Reply Server::sendNewMessages(const int socketFD) {
                     ++it;
                 }
             }
+
             pthread_mutex_unlock(&this->unreadMessagesListMutex);
         }
+
         reply = Reply::Success;
+    } else {
+        reply = Reply::Denied;
+    }
+
+    return reply;
+}
+
+Reply Server::getEncryptedMessage(const int socketFD) {
+    std::string currentLogin;
+    currentLogin = this->getLoginByAuthorization(socketFD);
+    bool isAuthorized;
+    isAuthorized = !currentLogin.empty();
+    Reply reply;
+    if (isAuthorized) {
+        reply = Reply::Allowed;
+
+        int n;
+        n = write(socketFD, &reply, sizeof(Reply));
+        if (n < 0) {
+            perror("Error writing to socket");
+        }
+
+        messageReducedData encryptedMessage;
+        n = read(socketFD, &encryptedMessage, sizeof(messageReducedData));
+        if (n < 0) {
+            perror("Error reading from socket");
+        }
+
+        messageData decryptedFullMessage;
+        long long tempKey = this->privateKeyMap.find(currentLogin)->second;
+
+        strncpy(decryptedFullMessage.from, currentLogin.c_str(), currentLogin.size());
+
+        for (int i = 0; i < strlen(encryptedMessage.to); ++i) {
+            decryptedFullMessage.to[i] = (encryptedMessage.to[i] - (tempKey % 74));
+        }
+
+        for (int i = 0; i < strlen(encryptedMessage.text); ++i) {
+            decryptedFullMessage.text[i] = (encryptedMessage.text[i] - (tempKey % 74));
+        }
+
+        userData user;
+        strncpy(user.login, decryptedFullMessage.to, sizeof(messageData::to));
+        bool isExisting;
+        isExisting = this->checkRegisteredUser(user);
+        if (isExisting) {
+            if (this->checkFriend(currentLogin, decryptedFullMessage.to, true, true)) {
+                std::cout << "From: " << decryptedFullMessage.from << " to: " << decryptedFullMessage.to << " text: " << decryptedFullMessage.text
+                          << std::endl;
+                this->addNewEncryptedMessage(decryptedFullMessage);
+                reply = Reply::Success;
+            } else {
+                reply = Reply::Failure;
+            }
+        } else {
+            reply = Reply::Failure;
+        }
+    } else {
+        reply = Reply::Denied;
+    }
+
+    return reply;
+}
+
+Reply Server::sendNewEncryptedMessages(const int socketFD) {
+    std::string currentLogin;
+    currentLogin = this->getLoginByAuthorization(socketFD);
+    bool isAuthorized;
+    isAuthorized = !currentLogin.empty();
+    Reply reply;
+    if (isAuthorized) {
+        reply = Reply::Allowed;
+
+        int n;
+        n = write(socketFD, &reply, sizeof(Reply));
+        if (n < 0) {
+            perror("Error writing to socket");
+        }
+
+        int newMessagesNumber = 0;
+        pthread_mutex_lock(&this->unreadEncryptedMessagesListMutex);
+        for (auto &unreadEncryptedMessage: this->unreadEncryptedMessages) {
+            if (currentLogin == unreadEncryptedMessage.to) {
+                newMessagesNumber++;
+            }
+        }
+        pthread_mutex_unlock(&this->unreadEncryptedMessagesListMutex);
+
+        std::cout << "New encrypted messages number: " << newMessagesNumber << std::endl;
+        n = write(socketFD, &newMessagesNumber, sizeof(int));
+        if (n < 0) {
+            perror("Error writing to socket");
+        }
+
+        if (newMessagesNumber != 0) {
+            pthread_mutex_lock(&this->unreadEncryptedMessagesListMutex);
+
+            messageData decryptedMessage;
+            messageData encryptedMessage;
+
+            long long tempKey = this->privateKeyMap.find(currentLogin)->second;
+
+            for (auto it = this->unreadEncryptedMessages.begin(); it != this->unreadEncryptedMessages.end();) {
+                if (currentLogin == (*it).to) {
+                    decryptedMessage = (*it);
+
+                    std::cout << "Decrypted message: From: " << decryptedMessage.from << " to: " << decryptedMessage.to
+                              << " text: " << decryptedMessage.text << std::endl;
+
+                    for (int i = 0; i < strlen(decryptedMessage.from); ++i) {
+                        encryptedMessage.from[i] = (decryptedMessage.from[i] + (tempKey % 74));
+                    }
+                    for (int i = 0; i < strlen(decryptedMessage.to); ++i) {
+                        encryptedMessage.to[i] = (decryptedMessage.to[i] + (tempKey % 74));
+                    }
+                    for (int i = 0; i < strlen(decryptedMessage.text); ++i) {
+                        encryptedMessage.text[i] = (decryptedMessage.text[i] + (tempKey % 74));
+                    }
+
+                    std::cout << "Encrypted message: From: " << encryptedMessage.from << " to: " << encryptedMessage.to
+                              << " text: " << encryptedMessage.text << std::endl;
+
+                    n = write(socketFD, &encryptedMessage, sizeof(messageData));
+                    if (n < 0) {
+                        perror("Error writing to socket");
+                    }
+                    it = this->unreadEncryptedMessages.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+            pthread_mutex_unlock(&this->unreadEncryptedMessagesListMutex);
+        }
+        reply = Reply::Success;
+    } else {
+        reply = Reply::Denied;
+    }
+    return reply;
+}
+
+Reply Server::sendPublicKey(const int socketFD) {
+    std::string currentLogin;
+    currentLogin = this->getLoginByAuthorization(socketFD);
+    bool isAuthorized;
+    isAuthorized = !currentLogin.empty();
+    Reply reply;
+    int n;
+    if (isAuthorized) {
+        reply = Reply::Allowed;
+        n = write(socketFD, &reply, sizeof(Reply));
+        if (n < 0) {
+            perror("Error reading from socket");
+        }
+
+        long long PublicP = this->getP();
+        n = write(socketFD, &PublicP, sizeof(long long));
+        if (n < 0) {
+            perror("Error writing to socket");
+        }
+
+        n = read(socketFD, &reply, sizeof(Reply));
+        if (n < 0) {
+            perror("Error reading from socket");
+        }
+
+        if (reply == Reply::Agree) {
+            long long PublicG = this->getG();
+            n = write(socketFD, &PublicG, sizeof(long long));
+            if (n < 0) {
+                perror("Error writing to socket");
+            }
+            reply = Reply::Success;
+        } else {
+            reply = Reply::Failure;
+        }
+    } else {
+        reply = Reply::Denied;
+    }
+    return reply;
+}
+
+Reply Server::buildSymmetricConnection(const int socketFD) {
+    std::string currentLogin;
+    currentLogin = this->getLoginByAuthorization(socketFD);
+    bool isAuthorized;
+    Reply reply;
+    isAuthorized = !currentLogin.empty();
+    if (isAuthorized) {
+        long long privateKeyBase = primeNumberGenerator();
+        long long privateKeyComponentClient;
+        long long privateKeyComponentServer;
+        privateKeyComponentServer = diffieHelmanStepOne(privateKeyBase);
+
+        reply = Reply::Allowed;
+        int n;
+        n = write(socketFD, &reply, sizeof(Reply));
+        if (n < 0) {
+            perror("Error writing to socket");
+        }
+
+        n = read(socketFD, &privateKeyComponentClient, sizeof(long long));
+        if (n < 0) {
+            perror("Error reading from socket");
+        }
+
+        n = read(socketFD, &reply, sizeof(Reply));
+        if (n < 0) {
+            perror("Error writing to socket");
+        }
+
+        if (reply == Reply::Agree) {
+            n = write(socketFD, &privateKeyComponentServer, sizeof(long long));
+            if (n < 0) {
+                perror("Error reading from socket");
+            }
+
+            long long tempKey = diffieHelmanStepTwo(privateKeyComponentClient, privateKeyBase);
+            this->privateKeyMap[currentLogin] = tempKey;
+            reply = Reply::Success;
+        } else {
+            reply = Reply::Failure;
+        }
     } else {
         reply = Reply::Denied;
     }
@@ -381,7 +601,6 @@ Reply Server::addFriend(const int socketFD) {
             reply = Reply::Failure;
         }
     } else {
-
         reply = Reply::Denied;
     }
 
@@ -423,7 +642,6 @@ Reply Server::removeFriend(const int socketFD) {
             perror("Error reading from socket");
         }
         std::cout << "Friend login: " << user.login << std::endl;
-
 
         bool isExisting;
         isExisting = this->checkRegisteredUser(user);
@@ -547,280 +765,6 @@ Reply Server::getFriendRequests(const int socketFD) {
     return reply;
 }
 
-bool Server::checkRegisteredUser(const userData &user, const bool comparePassword) {
-    pthread_mutex_lock(&this->usersFileMutex);
-    std::ifstream inFile("Users.csv");
-
-    std::string line;
-    std::string login;
-    std::string password;
-    bool isExisting = false;
-    while (getline(inFile, line)) {
-        std::stringstream lineStream(line);
-        std::getline(lineStream, login, ',');
-        std::getline(lineStream, password, ',');
-
-        if (user.login == login) {
-            if (comparePassword) {
-                if (encryptPassword(user.password) == password) {
-                    isExisting = true;
-                }
-            } else {
-                isExisting = true;
-            }
-            break;
-        }
-    }
-
-    inFile.close();
-    pthread_mutex_unlock(&this->usersFileMutex);
-
-    return isExisting;
-}
-
-bool Server::checkAuthorization(const int socketFD) {
-    std::string currentIP = this->getIP(socketFD);
-
-    pthread_mutex_lock(&this->authorizedUsersFileMutex);
-    std::ifstream inFile("AuthorizedUsers.csv");
-
-    std::string line;
-    std::string ip;
-    bool isAlreadyAuthorized = false;
-    while (getline(inFile, line)) {
-        std::stringstream lineStream(line);
-        std::getline(lineStream, ip, ',');
-
-        if (currentIP == ip) {
-            isAlreadyAuthorized = true;
-            break;
-        }
-    }
-
-    inFile.close();
-    pthread_mutex_unlock(&this->authorizedUsersFileMutex);
-
-    return isAlreadyAuthorized;
-}
-
-void Server::addNewUser(const userData &newUser) {
-    pthread_mutex_lock(&this->usersFileMutex);
-    std::ofstream outFile("Users.csv", std::ios::app);
-
-    outFile << newUser.login << ',' << encryptPassword(newUser.password) << std::endl;
-    std::cout << "Login: " << newUser.login << std::endl;
-
-    outFile.close();
-    pthread_mutex_unlock(&this->usersFileMutex);
-}
-
-void Server::addNewIP(const std::string& newIP, const std::string& registeredLogin) {
-    pthread_mutex_lock(&this->authorizedUsersFileMutex);
-    std::ofstream outFile("AuthorizedUsers.csv", std::ios::app);
-
-    outFile << newIP << ',' << registeredLogin << std::endl;
-    std::cout << "IP: " << newIP << " login: " << registeredLogin << std::endl;
-
-    outFile.close();
-    pthread_mutex_unlock(&this->authorizedUsersFileMutex);
-}
-
-void Server::deleteRegisteredUser(const std::string& registeredLogin) {
-    pthread_mutex_lock(&this->usersFileMutex);
-    std::ifstream inFile("Users.csv");
-    std::ofstream outFile("Users.csv.temp");
-
-    std::string line;
-    std::string login, password;
-    while (getline(inFile, line)) {
-        std::stringstream lineStream(line);
-        std::getline(lineStream, login, ',');
-        std::getline(lineStream, password, ',');
-
-        if (registeredLogin != login) {
-            outFile << login << ',' << password << std::endl;
-        }
-    }
-
-    inFile.close();
-    outFile.close();
-
-    remove("Users.csv");
-    rename("Users.csv.temp", "Users.csv");
-    pthread_mutex_unlock(&this->usersFileMutex);
-}
-
-void Server::deleteAuthorizedIP(const std::string& authorizedIP) {
-    pthread_mutex_lock(&this->authorizedUsersFileMutex);
-    std::ifstream inFile("AuthorizedUsers.csv");
-    std::ofstream outFile("AuthorizedUsers.csv.temp");
-
-    std::string line;
-    std::string ip, login;
-    while (getline(inFile, line)) {
-        std::stringstream lineStream(line);
-        std::getline(lineStream, ip, ',');
-        std::getline(lineStream, login, ',');
-
-        if (authorizedIP != ip) {
-            outFile << ip << ',' << login << std::endl;
-        }
-    }
-
-    inFile.close();
-    outFile.close();
-
-    remove("AuthorizedUsers.csv");
-    rename("AuthorizedUsers.csv.temp", "AuthorizedUsers.csv");
-    pthread_mutex_unlock(&this->authorizedUsersFileMutex);
-}
-
-std::string Server::getIP(const int socketFD) {
-    sockaddr_in currentAddress = {0};
-    socklen_t currentAddressLength = sizeof(currentAddress);
-    getpeername(socketFD, (sockaddr *) &currentAddress, &currentAddressLength);
-    char currentIP[INET_ADDRSTRLEN];
-    inet_ntop(AF_INET, &(currentAddress.sin_addr), currentIP, INET_ADDRSTRLEN);
-    return {currentIP};
-}
-
-std::string Server::getLoginByAuthorization(const int socketFD) {
-    std::string currentIP = this->getIP(socketFD);
-
-    pthread_mutex_lock(&this->usersFileMutex);
-    std::ifstream inFile("AuthorizedUsers.csv");
-
-    std::string line;
-    std::string ip, login;
-    std::string currentLogin;
-    while (getline(inFile, line)) {
-        std::stringstream lineStream(line);
-        std::getline(lineStream, ip, ',');
-        std::getline(lineStream, login, ',');
-
-        if (currentIP == ip) {
-            currentLogin = login;
-            break;
-        }
-    }
-
-    inFile.close();
-    pthread_mutex_unlock(&this->usersFileMutex);
-
-    return currentLogin;
-}
-
-void Server::addNewMessage(const messageData &message) {
-    pthread_mutex_lock(&this->unreadMessagesListMutex);
-    this->unreadMessages.push_back(message);
-    pthread_mutex_unlock(&this->unreadMessagesListMutex);
-
-    // zapisat do historie
-    pthread_mutex_lock(&this->historyFileMutex);
-
-    std::ofstream outFile("History.csv", std::ios_base::app);
-    if (outFile.is_open()) {
-        outFile << message.from << ',' << message.to << ',' << message.text << std::endl;
-    }
-    outFile.close();
-
-    pthread_mutex_unlock(&this->historyFileMutex);
-}
-
-bool Server::checkFriend(const std::string& currentLogin, const std::string& friendLogin, const bool bilateralCheck,
-                         const bool checkConfirmation) {
-    pthread_mutex_lock(&this->friendListFileMutex);
-    std::ifstream inFile("FriendList.csv");
-
-    std::string line;
-    std::string loginFrom, loginTo, isConfirmed;
-    bool isExisting = false;
-    while (getline(inFile, line)) {
-        std::stringstream lineStream(line);
-        std::getline(lineStream, loginFrom, ',');
-        std::getline(lineStream, loginTo, ',');
-        std::getline(lineStream, isConfirmed, ',');
-
-        if ((currentLogin == loginFrom && friendLogin == loginTo) ||
-            (bilateralCheck && friendLogin == loginFrom && currentLogin == loginTo)) {
-            if (checkConfirmation) {
-                if (isConfirmed == "1") {
-                    isExisting = true;
-                }
-            } else {
-                isExisting = true;
-            }
-            break;
-        }
-    }
-    inFile.close();
-    pthread_mutex_unlock(&this->friendListFileMutex);
-
-    return isExisting;
-}
-
-void Server::addToFriendList(const std::string& currentLogin, const std::string& friendLogin) {
-    pthread_mutex_lock(&this->friendListFileMutex);
-    std::ofstream outFile("FriendList.csv", std::ios::app);
-
-    outFile << currentLogin << ',' << friendLogin << ',' << '0' << std::endl;
-    std::cout << "Login: " << currentLogin << " add friend: " << friendLogin << std::endl;
-
-    outFile.close();
-    pthread_mutex_unlock(&this->friendListFileMutex);
-}
-
-void Server::deleteFromFriendList(const std::string& currentLogin, const std::string& friendLogin) {
-    pthread_mutex_lock(&this->friendListFileMutex);
-    std::ifstream inFile("FriendList.csv");
-    std::ofstream outFile("FriendList.csv.temp");
-
-    std::string line;
-    std::string loginFrom, loginTo, isConfirmed;
-    while (getline(inFile, line)) {
-        std::stringstream lineStream(line);
-        std::getline(lineStream, loginFrom, ',');
-        std::getline(lineStream, loginTo, ',');
-        std::getline(lineStream, isConfirmed, ',');
-
-        if ((currentLogin != loginFrom || friendLogin != loginTo) && (friendLogin != loginFrom ||
-                                                                      currentLogin != loginTo)) {
-            outFile << loginFrom << ',' << loginTo << ',' << isConfirmed << std::endl;
-        }
-    }
-
-    inFile.close();
-    outFile.close();
-
-    remove("FriendList.csv");
-    rename("FriendList.csv.temp", "FriendList.csv");
-    pthread_mutex_unlock(&this->friendListFileMutex);
-}
-
-int Server::getFriendRequestsNumber(const std::string& login) {
-    pthread_mutex_lock(&this->friendListFileMutex);
-    std::ifstream inFile("FriendList.csv");
-
-    std::string line;
-    std::string loginFrom, loginTo, isConfirmed;
-    int friendRequestsNumber = 0;
-    while (getline(inFile, line)) {
-        std::stringstream lineStream(line);
-        std::getline(lineStream, loginFrom, ',');
-        std::getline(lineStream, loginTo, ',');
-        std::getline(lineStream, isConfirmed, ',');
-
-        if (login == loginTo && isConfirmed == "0") {
-            friendRequestsNumber++;
-        }
-    }
-
-    inFile.close();
-    pthread_mutex_unlock(&this->friendListFileMutex);
-
-    return friendRequestsNumber;
-}
-
 Reply Server::getHistory(const int socketFD) {
     std::string currentLogin;
     currentLogin = this->getLoginByAuthorization(socketFD);
@@ -886,9 +830,6 @@ Reply Server::getHistory(const int socketFD) {
             inFile.close();
             pthread_mutex_unlock(&this->historyFileMutex);
         }
-        delete[] historyIndexes;
-        historyIndexes = nullptr;
-
         reply = Reply::Success;
     } else {
         reply = Reply::Denied;
@@ -909,69 +850,6 @@ Reply Server::getHistory(const int socketFD) {
     //*
 
     return reply;
-}
-
-int *Server::getHistoryIndexes(const std::string& login) {
-    pthread_mutex_lock(&this->historyFileMutex);
-    std::ifstream inFile("History.csv");
-
-    int *numberedLines = new int[1024];
-    int numberedLinesLen = 0;
-    int lineIndex = 0;
-
-    std::string line;
-    std::string from, to, text;
-    while (getline(inFile, line)) {
-        std::stringstream lineStream(line);
-        std::getline(lineStream, from, ',');
-        std::getline(lineStream, to, ',');
-        std::getline(lineStream, text, ',');
-
-        if (from == login || to == login) {
-            numberedLines[numberedLinesLen++] = lineIndex;
-        }
-
-        lineIndex++;
-    }
-
-    inFile.close();
-    pthread_mutex_unlock(&this->historyFileMutex);
-
-    int *ret = new int[1 + numberedLinesLen];
-    ret[0] = numberedLinesLen;
-    for (int i = 0; i < numberedLinesLen; i++) {
-        ret[i + 1] = numberedLines[i];
-    }
-    delete[] numberedLines;
-    numberedLines = nullptr;
-
-    return ret;
-}
-
-std::string Server::encryptPassword(const std::string& password) {
-    std::string unencryptedPassword = "Dano";
-    std::string encryptedPassword;
-    unencryptedPassword += password;
-    unencryptedPassword += "Drevo";
-    int messageLength = (int)unencryptedPassword.length();
-    char temp;
-
-    for (int j = 0; j < 80; ++j) {
-        temp = unencryptedPassword[0];
-        for (int i = 0; i < messageLength - 1; ++i) {
-            unencryptedPassword[i] = unencryptedPassword[i + 1];
-        }
-        unencryptedPassword[messageLength - 1] = temp;
-    }
-
-    for (int i = 0; i < messageLength; ++i) {
-        unencryptedPassword[i] = (char)(unencryptedPassword[i] % 74);
-        unencryptedPassword[i] += (char)128;
-    }
-    for (int i = messageLength - 1; i >= 0; --i) {
-        encryptedPassword.push_back(unencryptedPassword[i]);
-    }
-    return encryptedPassword;
 }
 
 Reply Server::sendFile(const int socketFD) {
@@ -1029,6 +907,7 @@ Reply Server::sendFile(const int socketFD) {
     } else {
         reply = Reply::Denied;
     }
+
     return reply;
 }
 
@@ -1049,7 +928,7 @@ Reply Server::getNewFiles(const int socketFD) {
 
         int newFilesNumber = 0;
         pthread_mutex_lock(&this->unreadFilesListMutex);
-        for (auto & unreadFile : this->unreadFiles) {
+        for (auto &unreadFile: this->unreadFiles) {
             if (currentLogin == unreadFile.to) {
                 newFilesNumber++;
             }
@@ -1090,27 +969,6 @@ Reply Server::getNewFiles(const int socketFD) {
     return reply;
 }
 
-void Server::addNewFile(const fileData &file) {
-    pthread_mutex_lock(&this->unreadFilesListMutex);
-    this->unreadFiles.push_back(file);
-    pthread_mutex_unlock(&this->unreadFilesListMutex);
-}
-
-void Server::addNewFileGroup(const fileData &file, const std::string& group, const std::string& login) {
-    pthread_mutex_lock(&this->unreadFilesListMutex);
-    std::list<std::string> recipients;
-    recipients = getGroupNames(group, login);
-
-    for (auto & recipient : recipients) {
-        strcpy((char *) file.from, group.c_str()); //TOTO URCUJE, CI ODOSIELATEL JE MENOVITY ALEBO SKUPINA
-        strcpy((char *) file.to, recipient.c_str());
-        this->unreadFiles.push_back(file);
-        std::cout << "From: " << file.from << " to: " << file.to << " file name: " << file.name << std::endl;
-    }
-
-    pthread_mutex_unlock(&this->unreadFilesListMutex);
-}
-
 Reply Server::createGroup(const int socketFD) {
     std::string currentLogin;
     currentLogin = this->getLoginByAuthorization(socketFD);
@@ -1146,52 +1004,6 @@ Reply Server::createGroup(const int socketFD) {
     }
 
     return reply;
-}
-
-bool Server::checkGroup(const std::string& groupName) {
-    pthread_mutex_lock(&this->groupsFileMutex);
-    std::ifstream inFile("Groups.csv");
-
-    std::string line;
-    std::string name;
-    bool isExisting = false;
-    while (getline(inFile, line)) {
-        std::stringstream lineStream(line);
-        std::getline(lineStream, name, ',');
-
-        if (name == groupName) {
-            isExisting = true;
-            break;
-        }
-    }
-    inFile.close();
-    pthread_mutex_unlock(&this->groupsFileMutex);
-
-    return isExisting;
-}
-
-void Server::addNewGroup(const std::string& groupName) {
-    pthread_mutex_lock(&this->groupsFileMutex);
-    std::ofstream outFile("Groups.csv", std::ios::app);
-
-    outFile << groupName << std::endl;
-    std::cout << "Group name: " << groupName << " added" << std::endl;
-
-    outFile.close();
-    pthread_mutex_unlock(&this->groupsFileMutex);
-
-    //*
-    pthread_mutex_lock(&this->groupsFileMutex);
-    std::ifstream testInFile("Groups.csv");
-
-    std::cout << "Group:" << std::endl;
-    std::string testLine;
-    while (getline(testInFile, testLine)) {
-        std::cout << "* " << testLine << std::endl;
-    }
-    testInFile.close();
-    pthread_mutex_unlock(&this->groupsFileMutex);
-    //*
 }
 
 Reply Server::addUserToGroup(const int socketFD) {
@@ -1273,7 +1085,459 @@ Reply Server::addUserToGroup(const int socketFD) {
     return reply;
 }
 
-bool Server::checkUserInGroup(const std::string& group, const std::string& login) {
+long long Server::getP() {
+    return this->P;
+}
+
+long long Server::getG() {
+    return this->G;
+}
+
+bool Server::checkRegisteredUser(const userData &user, const bool comparePassword) {
+    pthread_mutex_lock(&this->usersFileMutex);
+    std::ifstream inFile("Users.csv");
+
+    std::string line;
+    std::string login;
+    std::string password;
+    bool isExisting = false;
+    while (getline(inFile, line)) {
+        std::stringstream lineStream(line);
+        std::getline(lineStream, login, ',');
+        std::getline(lineStream, password, ',');
+
+        if (user.login == login) {
+            if (comparePassword) {
+                if (encryptPassword(user.password) == password) {
+                    isExisting = true;
+                }
+            } else {
+                isExisting = true;
+            }
+            break;
+        }
+    }
+
+    inFile.close();
+    pthread_mutex_unlock(&this->usersFileMutex);
+
+    return isExisting;
+}
+
+bool Server::checkAuthorization(const int socketFD) {
+    std::string currentIP = this->getIP(socketFD);
+
+    pthread_mutex_lock(&this->authorizedUsersFileMutex);
+    std::ifstream inFile("AuthorizedUsers.csv");
+
+    std::string line;
+    std::string ip;
+    bool isAlreadyAuthorized = false;
+    while (getline(inFile, line)) {
+        std::stringstream lineStream(line);
+        std::getline(lineStream, ip, ',');
+
+        if (currentIP == ip) {
+            isAlreadyAuthorized = true;
+            break;
+        }
+    }
+
+    inFile.close();
+    pthread_mutex_unlock(&this->authorizedUsersFileMutex);
+
+    return isAlreadyAuthorized;
+}
+
+void Server::addNewUser(const userData &newUser) {
+    pthread_mutex_lock(&this->usersFileMutex);
+    std::ofstream outFile("Users.csv", std::ios::app);
+
+    outFile << newUser.login << ',' << encryptPassword(newUser.password) << std::endl;
+    std::cout << "Login: " << newUser.login << std::endl;
+
+    outFile.close();
+    pthread_mutex_unlock(&this->usersFileMutex);
+}
+
+void Server::addNewIP(const std::string &newIP, const std::string &registeredLogin) {
+    pthread_mutex_lock(&this->authorizedUsersFileMutex);
+    std::ofstream outFile("AuthorizedUsers.csv", std::ios::app);
+
+    outFile << newIP << ',' << registeredLogin << std::endl;
+    std::cout << "IP: " << newIP << " login: " << registeredLogin << std::endl;
+
+    outFile.close();
+    pthread_mutex_unlock(&this->authorizedUsersFileMutex);
+}
+
+void Server::deleteRegisteredUser(const std::string &registeredLogin) {
+    pthread_mutex_lock(&this->usersFileMutex);
+    std::ifstream inFile("Users.csv");
+    std::ofstream outFile("Users.csv.temp");
+
+    std::string line;
+    std::string login, password;
+    while (getline(inFile, line)) {
+        std::stringstream lineStream(line);
+        std::getline(lineStream, login, ',');
+        std::getline(lineStream, password, ',');
+
+        if (registeredLogin != login) {
+            outFile << login << ',' << password << std::endl;
+        }
+    }
+
+    inFile.close();
+    outFile.close();
+
+    remove("Users.csv");
+    rename("Users.csv.temp", "Users.csv");
+    pthread_mutex_unlock(&this->usersFileMutex);
+}
+
+void Server::deleteAuthorizedIP(const std::string &authorizedIP) {
+    pthread_mutex_lock(&this->authorizedUsersFileMutex);
+    std::ifstream inFile("AuthorizedUsers.csv");
+    std::ofstream outFile("AuthorizedUsers.csv.temp");
+
+    std::string line;
+    std::string ip, login;
+    while (getline(inFile, line)) {
+        std::stringstream lineStream(line);
+        std::getline(lineStream, ip, ',');
+        std::getline(lineStream, login, ',');
+
+        if (authorizedIP != ip) {
+            outFile << ip << ',' << login << std::endl;
+        }
+    }
+
+    inFile.close();
+    outFile.close();
+
+    remove("AuthorizedUsers.csv");
+    rename("AuthorizedUsers.csv.temp", "AuthorizedUsers.csv");
+    pthread_mutex_unlock(&this->authorizedUsersFileMutex);
+}
+
+std::string Server::getIP(const int socketFD) {
+    sockaddr_in currentAddress = {0};
+    socklen_t currentAddressLength = sizeof(currentAddress);
+    getpeername(socketFD, (sockaddr *) &currentAddress, &currentAddressLength);
+    char currentIP[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &(currentAddress.sin_addr), currentIP, INET_ADDRSTRLEN);
+    return {currentIP};
+}
+
+std::string Server::getLoginByAuthorization(const int socketFD) {
+    std::string currentIP = this->getIP(socketFD);
+
+    pthread_mutex_lock(&this->usersFileMutex);
+    std::ifstream inFile("AuthorizedUsers.csv");
+
+    std::string line;
+    std::string ip, login;
+    std::string currentLogin;
+    while (getline(inFile, line)) {
+        std::stringstream lineStream(line);
+        std::getline(lineStream, ip, ',');
+        std::getline(lineStream, login, ',');
+
+        if (currentIP == ip) {
+            currentLogin = login;
+            break;
+        }
+    }
+
+    inFile.close();
+    pthread_mutex_unlock(&this->usersFileMutex);
+
+    return currentLogin;
+}
+
+void Server::addNewMessage(const messageData &message) {
+    pthread_mutex_lock(&this->unreadMessagesListMutex);
+    this->unreadMessages.push_back(message);
+    pthread_mutex_unlock(&this->unreadMessagesListMutex);
+
+    // zapisat do historie
+    pthread_mutex_lock(&this->historyFileMutex);
+
+    std::ofstream outFile("History.csv", std::ios_base::app);
+    if (outFile.is_open()) {
+        outFile << message.from << ',' << message.to << ',' << message.text << std::endl;
+    }
+    outFile.close();
+
+    pthread_mutex_unlock(&this->historyFileMutex);
+}
+
+void Server::addNewEncryptedMessage(const messageData &message) {
+    pthread_mutex_lock(&this->unreadEncryptedMessagesListMutex);
+    this->unreadEncryptedMessages.push_back(message);
+    pthread_mutex_unlock(&this->unreadEncryptedMessagesListMutex);
+}
+
+bool Server::checkFriend(const std::string &currentLogin, const std::string &friendLogin, const bool bilateralCheck,
+                         const bool checkConfirmation) {
+    pthread_mutex_lock(&this->friendListFileMutex);
+    std::ifstream inFile("FriendList.csv");
+
+    std::string line;
+    std::string loginFrom, loginTo, isConfirmed;
+    bool isExisting = false;
+    while (getline(inFile, line)) {
+        std::stringstream lineStream(line);
+        std::getline(lineStream, loginFrom, ',');
+        std::getline(lineStream, loginTo, ',');
+        std::getline(lineStream, isConfirmed, ',');
+
+        if ((currentLogin == loginFrom && friendLogin == loginTo) ||
+            (bilateralCheck && friendLogin == loginFrom && currentLogin == loginTo)) {
+            if (checkConfirmation) {
+                if (isConfirmed == "1") {
+                    isExisting = true;
+                }
+            } else {
+                isExisting = true;
+            }
+            break;
+        }
+    }
+    inFile.close();
+    pthread_mutex_unlock(&this->friendListFileMutex);
+
+    return isExisting;
+}
+
+void Server::addToFriendList(const std::string &currentLogin, const std::string &friendLogin) {
+    pthread_mutex_lock(&this->friendListFileMutex);
+    std::ofstream outFile("FriendList.csv", std::ios::app);
+
+    outFile << currentLogin << ',' << friendLogin << ',' << '0' << std::endl;
+    std::cout << "Login: " << currentLogin << " add friend: " << friendLogin << std::endl;
+
+    outFile.close();
+    pthread_mutex_unlock(&this->friendListFileMutex);
+}
+
+void Server::deleteFromFriendList(const std::string &currentLogin, const std::string &friendLogin) {
+    pthread_mutex_lock(&this->friendListFileMutex);
+    std::ifstream inFile("FriendList.csv");
+    std::ofstream outFile("FriendList.csv.temp");
+
+    std::string line;
+    std::string loginFrom, loginTo, isConfirmed;
+    while (getline(inFile, line)) {
+        std::stringstream lineStream(line);
+        std::getline(lineStream, loginFrom, ',');
+        std::getline(lineStream, loginTo, ',');
+        std::getline(lineStream, isConfirmed, ',');
+
+        if ((currentLogin != loginFrom || friendLogin != loginTo) && (friendLogin != loginFrom ||
+                                                                      currentLogin != loginTo)) {
+            outFile << loginFrom << ',' << loginTo << ',' << isConfirmed << std::endl;
+        }
+    }
+
+    inFile.close();
+    outFile.close();
+
+    remove("FriendList.csv");
+    rename("FriendList.csv.temp", "FriendList.csv");
+    pthread_mutex_unlock(&this->friendListFileMutex);
+}
+
+int Server::getFriendRequestsNumber(const std::string &login) {
+    pthread_mutex_lock(&this->friendListFileMutex);
+    std::ifstream inFile("FriendList.csv");
+
+    std::string line;
+    std::string loginFrom, loginTo, isConfirmed;
+    int friendRequestsNumber = 0;
+    while (getline(inFile, line)) {
+        std::stringstream lineStream(line);
+        std::getline(lineStream, loginFrom, ',');
+        std::getline(lineStream, loginTo, ',');
+        std::getline(lineStream, isConfirmed, ',');
+
+        if (login == loginTo && isConfirmed == "0") {
+            friendRequestsNumber++;
+        }
+    }
+
+    inFile.close();
+    pthread_mutex_unlock(&this->friendListFileMutex);
+
+    return friendRequestsNumber;
+}
+
+int *Server::getHistoryIndexes(const std::string &login) {
+    pthread_mutex_lock(&this->historyFileMutex);
+    std::ifstream inFile("History.csv");
+
+    int *numberedLines = new int[1024];
+    int numberedLinesLen = 0;
+    int lineIndex = 0;
+
+    std::string line;
+    std::string from, to, text;
+    while (getline(inFile, line)) {
+        std::stringstream lineStream(line);
+        std::getline(lineStream, from, ',');
+        std::getline(lineStream, to, ',');
+        std::getline(lineStream, text, ',');
+
+        if (from == login || to == login) {
+            numberedLines[numberedLinesLen++] = lineIndex;
+        }
+
+        lineIndex++;
+    }
+
+    inFile.close();
+    pthread_mutex_unlock(&this->historyFileMutex);
+
+    int *ret = new int[1 + numberedLinesLen];
+    ret[0] = numberedLinesLen;
+    for (int i = 0; i < numberedLinesLen; i++) {
+        ret[i + 1] = numberedLines[i];
+    }
+    delete[] numberedLines;
+    numberedLines = nullptr;
+
+    return ret;
+}
+
+std::string Server::encryptPassword(const std::string &password) {
+    std::string unencryptedPassword = "Dano";
+    std::string encryptedPassword;
+    unencryptedPassword += password;
+    unencryptedPassword += "Drevo";
+    int messageLength = (int) unencryptedPassword.length();
+    char temp;
+
+    for (int j = 0; j < 80; ++j) {
+        temp = unencryptedPassword[0];
+        for (int i = 0; i < messageLength - 1; ++i) {
+            unencryptedPassword[i] = unencryptedPassword[i + 1];
+        }
+        unencryptedPassword[messageLength - 1] = temp;
+    }
+
+    for (int i = 0; i < messageLength; ++i) {
+        unencryptedPassword[i] = (char) (unencryptedPassword[i] % 74);
+        unencryptedPassword[i] += (char) 128;
+    }
+    for (int i = messageLength - 1; i >= 0; --i) {
+        encryptedPassword.push_back(unencryptedPassword[i]);
+    }
+    return encryptedPassword;
+}
+
+long long Server::diffieHelmanStepOne(long long prime) {
+    long long s = prime;
+    long long g = this->getG();
+    long long p = this->getP();
+    long long temp = ((g ^ s) % p);
+    return temp;
+}
+
+long long Server::diffieHelmanStepTwo(long long privateKeyComponentClient, long long privateKeyBase) {
+    long long g = this->getG();
+    long long p = this->getP();
+    long long temp = ((privateKeyComponentClient) ^ privateKeyBase) % p;
+    return temp;
+}
+
+long long Server::primeNumberGenerator() {
+    long long randomBeginning = ((rand() % 20000) + 20000) - (rand() % 10000);
+    long long primeNum = randomBeginning;
+    bool isPrime = false;
+    while (!isPrime) {
+        isPrime = true;
+        for (long long i = 2; i <= primeNum / 2; ++i) {
+            if (primeNum % i == 0) {
+                isPrime = false;
+                break;
+            }
+        }
+        ++primeNum;
+    }
+    --primeNum;
+
+    return primeNum;
+}
+
+void Server::addNewFile(const fileData &file) {
+    pthread_mutex_lock(&this->unreadFilesListMutex);
+    this->unreadFiles.push_back(file);
+    pthread_mutex_unlock(&this->unreadFilesListMutex);
+}
+
+void Server::addNewFileGroup(const fileData &file, const std::string &group, const std::string &login) {
+    pthread_mutex_lock(&this->unreadFilesListMutex);
+    std::list<std::string> recipients;
+    recipients = getGroupNames(group, login);
+
+    for (auto &recipient: recipients) {
+        strcpy((char *) file.from, group.c_str()); //TOTO URCUJE, CI ODOSIELATEL JE MENOVITY ALEBO SKUPINA
+        strcpy((char *) file.to, recipient.c_str());
+        this->unreadFiles.push_back(file);
+        std::cout << "From: " << file.from << " to: " << file.to << " file name: " << file.name << std::endl;
+    }
+
+    pthread_mutex_unlock(&this->unreadFilesListMutex);
+}
+
+bool Server::checkGroup(const std::string &groupName) {
+    pthread_mutex_lock(&this->groupsFileMutex);
+    std::ifstream inFile("Groups.csv");
+
+    std::string line;
+    std::string name;
+    bool isExisting = false;
+    while (getline(inFile, line)) {
+        std::stringstream lineStream(line);
+        std::getline(lineStream, name, ',');
+
+        if (name == groupName) {
+            isExisting = true;
+            break;
+        }
+    }
+    inFile.close();
+    pthread_mutex_unlock(&this->groupsFileMutex);
+
+    return isExisting;
+}
+
+void Server::addNewGroup(const std::string &groupName) {
+    pthread_mutex_lock(&this->groupsFileMutex);
+    std::ofstream outFile("Groups.csv", std::ios::app);
+
+    outFile << groupName << std::endl;
+    std::cout << "Group name: " << groupName << " added" << std::endl;
+
+    outFile.close();
+    pthread_mutex_unlock(&this->groupsFileMutex);
+
+    //*
+    pthread_mutex_lock(&this->groupsFileMutex);
+    std::ifstream testInFile("Groups.csv");
+
+    std::cout << "Group:" << std::endl;
+    std::string testLine;
+    while (getline(testInFile, testLine)) {
+        std::cout << "* " << testLine << std::endl;
+    }
+    testInFile.close();
+    pthread_mutex_unlock(&this->groupsFileMutex);
+    //*
+}
+
+bool Server::checkUserInGroup(const std::string &group, const std::string &login) {
     bool isExisting = false;
     bool end = false;
 
@@ -1305,12 +1569,12 @@ bool Server::checkUserInGroup(const std::string& group, const std::string& login
     return isExisting;
 }
 
-void Server::addNewMessageGroup(messageData fullMessage, const std::string& group, const std::string& login) {
+void Server::addNewMessageGroup(messageData fullMessage, const std::string &group, const std::string &login) {
     pthread_mutex_lock(&this->unreadMessagesListMutex);
     std::list<std::string> recipients;
     recipients = getGroupNames(group, login);
 
-    for (auto & recipient : recipients) {
+    for (auto &recipient: recipients) {
         strcpy(fullMessage.from, group.c_str()); //TOTO URCUJE, CI ODOSIELATEL JE MENOVITY ALEBO SKUPINA
         strcpy(fullMessage.to, recipient.c_str());
         this->unreadMessages.push_back(fullMessage);
@@ -1321,7 +1585,7 @@ void Server::addNewMessageGroup(messageData fullMessage, const std::string& grou
     pthread_mutex_unlock(&this->unreadMessagesListMutex);
 }
 
-std::list<std::string> Server::getGroupNames(const std::string& group, const std::string& login) {
+std::list<std::string> Server::getGroupNames(const std::string &group, const std::string &login) {
     std::list<std::string> groupNames;
 
     pthread_mutex_lock(&this->groupsFileMutex);
@@ -1360,389 +1624,4 @@ std::list<std::string> Server::getGroupNames(const std::string& group, const std
     //*
 
     return groupNames;
-}
-
-
-
-// * Sha-Vycuc encryption NWP.
-//std::string Server::encryptPassword(const std::string password){
-//    std::string unencryptedPassword = password;
-//    std::string encryptedPassword;
-//    int ft;
-//    int kt;
-//    int temp;
-//
-//    //Padding
-//    int messageLength = sizeof(unencryptedPassword);
-//    unencryptedPassword += 0x80;
-//    unencryptedPassword += 0x200;
-//    unencryptedPassword = unencryptedPassword % 0x200;
-//    int padding = (32 - messageLength);
-//    std::bitset<32> message;
-//    std::bitset message = std::bitset<32>(unencryptedPassword);
-//
-//    message<<=1;
-//    message&=0x01;
-//    for (int i = 0; i < padding-1; ++i) {
-//        message<<=1;
-//    }
-//    int w[80];
-//    for (int i = 0; i < 16; ++i) {
-//        std::bitset<32>(message)>>w[i];
-//    }
-//
-//    //Compresia
-//    int h[5] = {0x19283764,0x1DCBEF69,0x360A9C26,0x420B4E2A,0x6A2C64DF};
-//    // h0 = 0x19283764 = a0
-//    // h1 = 0x1DCBEF69 = b0
-//    // h2 = 0x360A9C26 = c0
-//    // h3 = 0x420B4E2A = d0
-//    // h4 = 0x6A2C64DF = e0
-//
-//    int a = h[0];
-//    int b = h[1];
-//    int c = h[2];
-//    int d = h[3];
-//    int e = h[4];
-//
-//    // Padding w[i] zo 16 na 80
-//    for (int i = 16; i < 80; ++i) {
-//        w[i] = (w[i-3] ^ w[i-8] ^ w[i-14] ^ w[i-16]);
-//        // Leftrotate 1
-//        w[i] = temp;
-//        for (int j = 0; j < i; ++j) {
-//            w[j+1] = w[j];
-//        }
-//        w[0] = temp;
-//    }
-//
-//    for (int i = 0; i < 80; ++i) {
-//        if (0 <= i && i <= 19) {        // Prva faza
-//            ft = (b and c) or ((not b) and d);
-//            kt = 0x5A827999;
-//        }
-//        else if (20 <= i && i <= 39) {  // Druha faza
-//            ft = b xor c xor d;
-//            kt = 0x6ED9EBA1;
-//        }
-//        else if (40 <= i && i <= 59) {  // Tretia faza
-//            ft = (b and c) or (b and d) or (c and d);
-//            kt = 0x8F1BBCDC;
-//        }
-//        else if (60 <= i && i <= 79) {  // Stvrta faza
-//            ft = b xor c xor d;
-//            kt = 0xCA62C1D6;
-//        }
-//
-//        temp = (a*2^5) + ft + e + ft + w[i];
-//        e = d;
-//        d = c;
-//        c = b;
-//        b = a;
-//        a = temp;
-//
-//        h[0] = h[0] + a;
-//        h[1] = h[1] + b;
-//        h[2] = h[2] + c;
-//        h[3] = h[3] + d;
-//        h[4] = h[4] + e;
-//    }
-//    std::stringstream ss;
-//    ss << ((h[0]*2^128) + (h[1]*2^96) + (h[2]*2^64) + (h[3]*2^32) + h[4]);
-//    ss >> encryptedPassword;
-//    return encryptedPassword;
-//}
-//*/
-//>>>>>>> origin/master
-
-
-
-Reply Server::sendPublicKey(const int socketFD) {
-    std::string currentLogin;
-    currentLogin = this->getLoginByAuthorization(socketFD);
-    bool isAuthorized;
-    isAuthorized = !currentLogin.empty();
-    Reply reply;
-    int n;
-    if (isAuthorized) {
-        reply = Reply::Allowed;
-        n = write(socketFD, &reply, sizeof(Reply));
-        if (n < 0) {
-            perror("Error reading from socket");
-        }
-        long long PublicP = this->getP();
-        n = write(socketFD, &PublicP, sizeof(long long));
-        if (n < 0) {
-            perror("Error writing to socket");
-        }
-
-        n = read(socketFD, &reply, sizeof(Reply));
-        if (n < 0) {
-            perror("Error reading from socket");
-        }
-        if (reply == Reply::Agree){
-            long long PublicG = this->getG();
-            n = write(socketFD, &PublicG, sizeof(long long));
-            if (n < 0) {
-                perror("Error writing to socket");
-            }
-            reply =Reply::Success;
-        }
-        else {
-            reply = Reply::Failure;
-        }
-    } else {
-        reply = Reply::Denied;
-    }
-    return reply;
-}
-
-Reply Server::buildSymmetricConnection(const int socketFD){
-    std::string currentLogin;
-    currentLogin = this->getLoginByAuthorization(socketFD);
-    bool isAuthorized;
-    Reply reply;
-//    std::cout << " Zpusteny BSC pred autorizaciou" << std::endl;
-    isAuthorized = !currentLogin.empty();
-    if (isAuthorized) {
-//        std::cout << " Zpusteny BSC po autorizacii" << std::endl;
-        long long privateKeyBase = primeNumberGenerator();
-        long long privateKeyComponentClient;
-        long long privateKeyComponentServer;
-        privateKeyComponentServer = diffieHelmanStepOne(privateKeyBase);
-        reply = Reply::Allowed;
-        int n;
-        n = write(socketFD, &reply, sizeof(Reply));
-        if (n < 0) {
-            perror("Error writing to socket");
-        }
-//        std::cout << "Idem od klienta" << std::endl;
-        n = read(socketFD, &privateKeyComponentClient, sizeof(long long));
-        if (n < 0) {
-            perror("Error reading from socket");
-        }
-
-//        std::cout << "Z klienta prislo " << privateKeyComponentClient << std::endl;
-
-        n = read(socketFD, &reply, sizeof(Reply));
-        if (n < 0) {
-            perror("Error writing to socket");
-        }
-        if (reply == Reply::Agree) {
-
-//            std::cout << "Idem do klienta " << std::endl;
-            n = write(socketFD, &privateKeyComponentServer, sizeof(long long));
-            if (n < 0) {
-                perror("Error reading from socket");
-            }
-//            std::cout << "Do klienta odislo  " << privateKeyComponentServer << std::endl;
-            long long tempKey = diffieHelmanStepTwo(privateKeyComponentClient, privateKeyBase);
-            this->privateKeyMap[getLoginByAuthorization(socketFD)] = tempKey;
-//            std::cout << "Success, Private key je vytvoreny. private key = " << tempKey << std::endl;
-            reply = Reply::Success;
-        } else {
-            reply = Reply::Failure;
-        }
-    }
-    else {
-        reply = Reply::Denied;
-    }
-    return reply;
-}
-
-long long Server::diffieHelmanStepOne(long long Prime) {
-    long long s = Prime;
-    long long g = this->getG();
-    long long p = this->getP();
-    long long temp = ((g^s) % p);
-//    std::cout << " Diffie 1 = " << temp << std::endl;
-    return temp;
-}
-
-long long Server::diffieHelmanStepTwo(long long privateKeyComponentClient, long long privateKeyBase) {
-    long long g = this->getG();
-    long long p = this->getP();
-    long long temp = ((privateKeyComponentClient)^privateKeyBase) % p;
-//    std::cout << " Diffie 2 = " << temp << std::endl;
-    return temp;
-}
-
-long long Server::getP(){
-    long long temp = this->P;
-    return temp;
-}
-
-long long Server::getG(){
-    long long temp = this->G;
-    return temp;
-}
-
-long long Server::primeNumberGenerator() {
-    long long randomBeginning = ((rand()%20000)+ 20000) - (rand()%10000);
-    long long primeNum = randomBeginning;
-    bool isPrime = false;
-//    std::cout << "Started searching for a sufficient prime, beginning is " << randomBeginning << std::endl;
-    while (isPrime == false) {
-        isPrime = true;
-            for (long long i = 2; i <= primeNum / 2; ++i) {
-                if (primeNum % i == 0) {
-                    isPrime = false;
-                    break;
-                }
-            }
-        ++primeNum;
-    }
-    --primeNum;
-//    std::cout << "Server has found a sufficient prime, " << primeNum << std::endl;
-
-    return primeNum;
-}
-
-Reply Server::getEncryptedMessage(const int socketFD) {
-    std::string currentLogin;
-    currentLogin = this->getLoginByAuthorization(socketFD);
-    bool isAuthorized;
-    isAuthorized = !currentLogin.empty();
-    Reply reply;
-    if (isAuthorized) {
-        reply = Reply::Allowed;
-
-        int n;
-        n = write(socketFD, &reply, sizeof(Reply));
-        if (n < 0) {
-            perror("Error writing to socket");
-        }
-        messageData decryptedMessage;
-        messageReducedData encryptedMessage;
-        n = read(socketFD, &encryptedMessage, sizeof(messageReducedData));
-        if (n < 0) {
-            perror("Error reading from socket");
-        }
-        userData user;
-        strncpy(user.login, decryptedMessage.to, 24);
-        bool isExisting;
-        isExisting = this->checkRegisteredUser(user);
-        if (isExisting) {
-                messageData fullMessage;
-                strncpy(fullMessage.from, currentLogin.c_str(), currentLogin.size());
-                strncpy(fullMessage.to, decryptedMessage.to, 24);
-                strncpy(fullMessage.text, decryptedMessage.text, 256);
-
-                auto it = this->privateKeyMap.find(getLoginByAuthorization(socketFD));
-                long long tempKey = it->second;
-                decryptedMessage = fullMessage;
-
-                std::string from = decryptedMessage.from;
-                std::string to = decryptedMessage.to;
-                std::string text = decryptedMessage.text;
-
-                for (int i = 0; i < from.length(); ++i) {
-                    decryptedMessage.from[i] = (fullMessage.from[i] - (tempKey% 74));
-                }
-                for (int i = 0; i < to.length(); ++i) {
-                    decryptedMessage.to[i] = (fullMessage.to[i] - (tempKey% 74));
-                }
-                if (this->checkFriend(user.login, decryptedMessage.to)) {
-                for (int i = 0; i < text.length(); ++i) {
-                    decryptedMessage.text[i] = (fullMessage.text[i] - (tempKey% 74));
-                }
-
-                this->addNewEncryptedMessage(decryptedMessage);
-                reply = Reply::Success;
-            } else {
-                reply = Reply::Failure;
-            }
-        } else{
-            reply = Reply::Disagree;
-        }
-    } else {
-        reply = Reply::Denied;
-
-    }
-
-    return reply;
-}
-
-void Server::addNewEncryptedMessage(const messageData &message) {
-    pthread_mutex_lock(&this->unreadMessagesListMutex);
-    this->unreadEncryptedMessages.push_back(message);
-    pthread_mutex_unlock(&this->unreadMessagesListMutex);
-    std::cout<< "Uspesne pridana nova encrypted sprava na neskorsie zpracovanie." << std::endl;
-}
-
-    Reply Server::sendNewEncryptedMessages(const int socketFD){
-        std::string currentLogin;
-        currentLogin = this->getLoginByAuthorization(socketFD);
-        bool isAuthorized;
-        isAuthorized = !currentLogin.empty();
-        Reply reply;
-        if (isAuthorized) {
-            reply = Reply::Allowed;
-
-            int n;
-            n = write(socketFD, &reply, sizeof(Reply));
-            if (n < 0) {
-                perror("Error writing to socket");
-            }
-
-            int newMessagesNumber = 0;
-            pthread_mutex_lock(&this->unreadMessagesListMutex);
-            for (auto it = this->unreadEncryptedMessages.begin(); it != this->unreadEncryptedMessages.end(); ++it) {
-                if (currentLogin == (*it).to) {
-                    newMessagesNumber++;
-                }
-            }
-            pthread_mutex_unlock(&this->unreadMessagesListMutex);
-
-            std::cout << "You have received " << newMessagesNumber<< " new encrypted messages. " << std::endl;
-            n = write(socketFD, &newMessagesNumber, sizeof(int));
-            if (n < 0) {
-                perror("Error writing to socket");
-            }
-
-            if (newMessagesNumber != 0) {
-                pthread_mutex_lock(&this->unreadMessagesListMutex);
-                messageData decryptedMessage;
-                messageData encryptedMessage;
-
-                auto it = this->privateKeyMap.find(currentLogin);
-                long long tempKey = it->second;
-
-                for (auto it = this->unreadEncryptedMessages.begin(); it != this->unreadEncryptedMessages.end();) {
-                    if (currentLogin == (*it).to) {
-                        decryptedMessage = (*it);
-                        encryptedMessage = (*it);
-
-                        std::string from = decryptedMessage.from;
-                        std::string to = decryptedMessage.to;
-                        std::string text = decryptedMessage.text;
-
-
-                        std::cout << "Decrypted message: From: " << decryptedMessage.from << " to: " << decryptedMessage.to << " text: " << decryptedMessage.text << std::endl;
-                        for (int i = 0; i < from.length(); ++i) {
-                            encryptedMessage.from[i] = (from[i] + (tempKey% 74));
-                        }
-                        for (int i = 0; i < to.length(); ++i) {
-                            encryptedMessage.to[i] = (to[i] + (tempKey% 74));
-                        }
-                        for (int i = 0; i < text.length(); ++i) {
-                            encryptedMessage.text[i] = (text[i] + (tempKey% 74));
-                        }
-                        std::cout << "Encrypted message: From: " << encryptedMessage.from << " to: " << encryptedMessage.to << " text: " << encryptedMessage.text << std::endl;
-                        n = write(socketFD, &(*it), sizeof(messageData));
-                        if (n < 0) {
-                            perror("Error writing to socket");
-                        }
-                        it = this->unreadEncryptedMessages.erase(it);
-                    } else {
-                        ++it;
-                    }
-                }
-                pthread_mutex_unlock(&this->unreadMessagesListMutex);
-            }
-            reply = Reply::Success;
-        } else {
-            reply = Reply::Denied;
-        }
-        return reply;
 }

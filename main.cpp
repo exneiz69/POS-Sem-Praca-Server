@@ -45,14 +45,20 @@ void *threadMain(void *pData) {
                 case Action::SendMessage:
                     reply = Server::getInstance().getMessage(*newSocketFD);
                     break;
-                case Action::SendEncryptedMessage:
-                    reply = Server::getInstance().getEncryptedMessage(*newSocketFD);
-                    break;
                 case Action::GetNewMessages:
                     reply = Server::getInstance().sendNewMessages(*newSocketFD);
                     break;
-                case Action::GetEncryptedMessages:
+                case Action::SendEncryptedMessage:
+                    reply = Server::getInstance().getEncryptedMessage(*newSocketFD);
+                    break;
+                case Action::GetNewEncryptedMessages:
                     reply = Server::getInstance().sendNewEncryptedMessages(*newSocketFD);
+                    break;
+                case Action::GetPublicKey:
+                    reply = Server::getInstance().sendPublicKey(*newSocketFD);
+                    break;
+                case Action::BuildSymmetricConnection:
+                    reply = Server::getInstance().buildSymmetricConnection(*newSocketFD);
                     break;
                 case Action::AddFriend:
                     reply = Server::getInstance().addFriend(*newSocketFD);
@@ -71,12 +77,6 @@ void *threadMain(void *pData) {
                     break;
                 case Action::GetNewFiles:
                     reply = Server::getInstance().getNewFiles(*newSocketFD);
-                    break;
-                case Action::SendPublicKey:
-                    reply = Server::getInstance().sendPublicKey(*newSocketFD);
-                    break;
-                case Action::BuildSymmetricConnection:
-                    reply = Server::getInstance().buildSymmetricConnection(*newSocketFD);
                     break;
                 case Action::CreateGroup:
                     reply = Server::getInstance().createGroup(*newSocketFD);
@@ -147,7 +147,6 @@ int main(int argc, char *argv[]) {
         std::cout << "accepted socket " << i << std::endl;
         pthread_create(&thread[i], &threadAttr, &threadMain, new int(newSocketFD));
     }
-
 
     pthread_attr_destroy(&threadAttr);
 
