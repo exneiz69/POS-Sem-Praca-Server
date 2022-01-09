@@ -21,7 +21,7 @@ void *threadMain(void *pData) {
     bool endOfCommunication = false;
     while (!endOfCommunication) {
         Action action;
-        int n;
+        ssize_t n;
         n = read(*newSocketFD, &action, sizeof(Action));
         if (n < 0) {
             perror("Error reading from socket");
@@ -97,16 +97,18 @@ void *threadMain(void *pData) {
 
     std::cout << "end socket " << *newSocketFD << " in thread" << std::endl;
     close(*newSocketFD);
+
     delete newSocketFD;
-    return NULL;
+
+    return nullptr;
 }
 
 int main(int argc, char *argv[]) {
     int socketFD;
     int newSocketFD;
     socklen_t clientAddressLength;
-    struct sockaddr_in serverAddress;
-    struct sockaddr_in clientAddress;
+    sockaddr_in serverAddress = {0};
+    sockaddr_in clientAddress = {0};
 
     if (argc < 2) {
         std::cerr << "usage " << argv[0] << " port" << std::endl;
@@ -132,7 +134,7 @@ int main(int argc, char *argv[]) {
     listen(socketFD, 5);
     clientAddressLength = sizeof(clientAddress);
 
-    pthread_t thread[20];
+    pthread_t thread[100];
 
     pthread_attr_t threadAttr;
     pthread_attr_init(&threadAttr);
